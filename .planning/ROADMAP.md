@@ -12,7 +12,7 @@ This roadmap delivers a fullstack IoT system where users remotely control ESP32-
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Foundation & Auth** - User accounts, deployed backend, and device registration
+- [x] **Phase 1: Foundation & Auth** - User accounts, deployed backend, and device registration (completed 2026-03-31)
 - [ ] **Phase 2: Firmware & Connection** - ESP32 connects to backend with persistent WebSocket
 - [ ] **Phase 3: Real-Time Control & Dashboard** - End-to-end relay control from web dashboard
 - [ ] **Phase 4: Transaction Audit System** - Blockchain-style immutable logging with history UI
@@ -34,9 +34,9 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 Plans:
 - [x] 01-01: MongoDB Atlas setup with user and device collections, schemas, and indexes
-- [ ] 01-02: Backend REST API with Express 5 — user auth (signup, login, logout, password reset) using JWT and bcrypt
-- [ ] 01-03: Device registration endpoint — user can claim an ESP32 and receive an auth token
-- [ ] 01-04: Deploy backend to Render with environment variables, health check, and MongoDB connection
+- [x] 01-02: Backend REST API with Express 5 — user auth (signup, login, logout, password reset) using JWT and bcrypt
+- [x] 01-03: Device registration endpoint — user can claim an ESP32 and receive an auth token
+- [x] 01-04: Deploy backend to Render with environment variables, health check, and MongoDB connection
 
 ### Phase 2: Firmware & Connection
 **Goal**: ESP32 connects to the backend and maintains a persistent, authenticated WebSocket connection with relay control capability
@@ -101,7 +101,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Auth | 1/4 | In Progress|  |
+| 1. Foundation & Auth | 4/4 | Complete   | 2026-03-31 |
 | 2. Firmware & Connection | 0/4 | Not started | - |
 | 3. Real-Time Control & Dashboard | 0/4 | Not started | - |
 | 4. Transaction Audit System | 0/3 | Not started | - |
