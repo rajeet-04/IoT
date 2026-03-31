@@ -33,7 +33,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 4 plans
 
 Plans:
-- [ ] 01-01: MongoDB Atlas setup with user and device collections, schemas, and indexes
+- [x] 01-01: MongoDB Atlas setup with user and device collections, schemas, and indexes
 - [ ] 01-02: Backend REST API with Express 5 — user auth (signup, login, logout, password reset) using JWT and bcrypt
 - [ ] 01-03: Device registration endpoint — user can claim an ESP32 and receive an auth token
 - [ ] 01-04: Deploy backend to Render with environment variables, health check, and MongoDB connection
@@ -101,7 +101,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Auth | 0/4 | Not started | - |
+| 1. Foundation & Auth | 1/4 | In Progress|  |
 | 2. Firmware & Connection | 0/4 | Not started | - |
 | 3. Real-Time Control & Dashboard | 0/4 | Not started | - |
 | 4. Transaction Audit System | 0/3 | Not started | - |
