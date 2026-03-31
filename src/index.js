@@ -5,6 +5,7 @@ import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import { connectDB } from './db/connection.js';
 import authRoutes from './routes/auth.routes.js';
+import deviceRoutes from './routes/device.routes.js';
 
 dotenv.config();
 
@@ -22,6 +23,7 @@ app.use(
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
+app.use('/api/devices', deviceRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
