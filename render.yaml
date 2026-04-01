@@ -19,18 +19,4 @@ services:
       - key: JWT_REFRESH_SECRET
         sync: false
       - key: FRONTEND_URL
-        value: "https://iot-1-mzfg.onrender.com" # Update this once frontend is deployed
-
-  - type: web
-    name: iot-frontend
-    runtime: node
-    region: oregon
-    plan: free
-    rootDirectory: frontend
-    buildCommand: npm install && npm run build
-    startCommand: npm run start
-    envVars:
-      - key: NEXT_PUBLIC_BACKEND_URL
-        value: "https://iot-wkvx.onrender.com"
-      - key: NODE_ENV
-        value: production
+        value: "https://io-t-beige.vercel.app"

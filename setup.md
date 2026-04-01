@@ -27,7 +27,7 @@ The backend uses MongoDB as its primary data store.
 
 ---
 
-## 2. Render Deployment (Backend & Frontend)
+## 2. Backend Deployment (Render)
 
 Render will host your Express server and Next.js dashboard.
 
@@ -35,21 +35,22 @@ Render will host your Express server and Next.js dashboard.
 1.  Log in to [Render](https://render.com) and click **New +** -> **Blueprint**.
 2.  Connect your GitHub repository.
 3.  Render will find the `render.yaml` file automatically.
-4.  Apply the blueprint. For the environment variables (`MONGODB_URI`, `JWT_SECRET`, etc.), provide your Atlas URI and generate strong random strings for the secrets.
+4.  Apply the blueprint. For the environment variables (`MONGODB_URI`, `JWT_SECRET`, etc.), provide your Atlas URI.
+5.  **Important**: Ensure `FRONTEND_URL` in Render points to your Vercel URL.
 
 ### B. Deploy Frontend
 1.  Click **New +** -> **Web Service**.
 2.  Select your repository again.
 3.  Set the following:
     - **Root Directory**: `frontend`
-    - **Build Command**: `npm install && npm run build`
-    - **Start Command**: `npm start`
+    - **Build Command**: `pnpm install && pnpm build`
+    - **Start Command**: `pnpm start`
 4.  **Environment Variable**:
     - Add `NEXT_PUBLIC_API_URL` pointing to your deployed Render backend (e.g., `https://iot-backend-abc.onrender.com`).
 
 ---
 
-## 3. ESP32 Firmware Flashing
+## 4. ESP32 Firmware Flashing
 
 ### A. Prerequisites
 1.  Install [VS Code](https://code.visualstudio.com/).
@@ -73,7 +74,7 @@ build_flags =
 
 ---
 
-## 4. Final Integration: Linking Everything
+## 5. Final Integration: Linking Everything
 
 Follow these steps once your Backend is live:
 
