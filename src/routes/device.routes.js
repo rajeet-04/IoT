@@ -196,8 +196,15 @@ router.post('/:id/command', async (req, res, next) => {
 
     // Check if device is connected
     if (!registry.isConnected(device.deviceId)) {
-      await Device.updateOne({ _id: device._id }, { $set: { relayState: newRelayState } });
       return res.status(503).json({ error: 'Device is offline' });
+    }
+
+    // Self-heal: If DB says offline but registry says connected
+    if (device.status === 'offline') {
+      await Device.updateOne(
+        { _id: device._id }, 
+        { $set: { status: 'online', lastSeen: new Date() } }
+      );
     }
 
     const command = {

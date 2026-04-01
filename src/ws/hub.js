@@ -134,7 +134,7 @@ export function attachWebSocketHub(server) {
                     clearTimeout(ws._pongTimeout);
                 }
                 console.log(`[WS Hub] Device ${deviceId} disconnected (code: ${code})`);
-                await registry.unregister(deviceId);
+                await registry.unregister(deviceId, ws);
             });
 
             // Handle errors
@@ -144,7 +144,7 @@ export function attachWebSocketHub(server) {
                 if (ws._pongTimeout) {
                     clearTimeout(ws._pongTimeout);
                 }
-                await registry.unregister(deviceId);
+                await registry.unregister(deviceId, ws);
             });
 
         } catch (error) {
@@ -193,7 +193,6 @@ function startPresenceMonitor() {
                     { $set: { status: 'offline' } }
                 );
                 
-                // Remove from registry if still present
                 if (registry.isConnected(device.deviceId)) {
                     await registry.unregister(device.deviceId);
                 }
@@ -201,7 +200,7 @@ function startPresenceMonitor() {
         } catch (error) {
             console.error('[WS Presence] Error during presence check:', error);
         }
-    }, 1000); // Check every 1 seconds
+    }, 30000); // Check every 30 seconds
 }
 
 /**

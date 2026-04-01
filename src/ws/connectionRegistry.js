@@ -42,21 +42,28 @@ export class ConnectionRegistry {
             console.error(`[WS Registry] Failed to update device status:`, error);
         }
 
-        // Auto-cleanup on close
-        ws.on('close', () => {
-            this.unregister(deviceId).catch(err => {
-                console.error(`[WS Registry] Error during cleanup:`, err);
-            });
-        });
     }
 
     /**
      * Unregister a device connection
      * @param {string} deviceId - Device UUID
+     * @param {import('ws').WebSocket} [closedWs=null] - The WebSocket that closed (optional)
      */
-    async unregister(deviceId) {
+    async unregister(deviceId, closedWs = null) {
+        // If unregister was triggered by a specific connection closing, 
+        // verify it's still the active connection to prevent race conditions.
+        if (closedWs) {
+            const currentWs = this._connections.get(deviceId);
+            if (currentWs && currentWs !== closedWs) {
+                console.log(`[WS Registry] Ignoring unregister for ${deviceId} - connection was replaced`);
+                return;
+            }
+        }
+
         const existed = this._connections.has(deviceId);
-        this._connections.delete(deviceId);
+        if (existed) {
+            this._connections.delete(deviceId);
+        }
 
         try {
             await Device.updateOne(
