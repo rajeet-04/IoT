@@ -8,7 +8,9 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "dev": "nodemon src/index.js",
+    "server": "nodemon src/index.js",
+    "client": "cd frontend && pnpm dev",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
     "start": "node src/index.js",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
   },
