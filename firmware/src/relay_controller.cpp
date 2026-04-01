@@ -60,7 +60,7 @@ bool RelayController::getState() const {
 }
 
 JsonDocument RelayController::getStateJson() {
-    StaticJsonDocument<128> doc;
+    JsonDocument doc;
     doc["type"] = "state_report";
     doc["relay"] = _state ? 1 : 0;  // 1 = ON, 0 = OFF (matching backend expectation)
     doc["relayState"] = _state;       // Boolean for clarity

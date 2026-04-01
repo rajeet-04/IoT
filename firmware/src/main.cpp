@@ -132,7 +132,7 @@ void setup() {
                     relay->setState(newState);
                     
                     // Send acknowledgment
-                    StaticJsonDocument<128> ack;
+                    JsonDocument ack;
                     ack["type"] = "ack";
                     ack["commandId"] = commandId;
                     ack["status"] = "success";
@@ -154,7 +154,7 @@ void setup() {
                     Serial.printf("[Relay] State changed to: %s\n", newState ? "ON" : "OFF");
                 } else {
                     // Invalid state value
-                    StaticJsonDocument<128> error;
+                    JsonDocument error;
                     error["type"] = "error";
                     error["code"] = "INVALID_STATE";
                     error["message"] = "State must be 0 or 1";
@@ -165,7 +165,7 @@ void setup() {
                 Serial.println("[WS] Server ping received");
             } else {
                 // Unknown action
-                StaticJsonDocument<128> error;
+                JsonDocument error;
                 error["type"] = "error";
                 error["code"] = "UNKNOWN_ACTION";
                 error["message"] = action;
