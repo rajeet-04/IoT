@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 
 const transactionSchema = new mongoose.Schema({
     deviceId: {
@@ -47,15 +48,12 @@ const transactionSchema = new mongoose.Schema({
 transactionSchema.index({ deviceId: 1, timestamp: -1 });
 transactionSchema.index({ userId: 1, timestamp: -1 });
 
-async function computeHash(data) {
-    const encoder = new TextEncoder();
+function computeHash(data) {
     const dataStr = JSON.stringify(data);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(dataStr));
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return crypto.createHash('sha256').update(dataStr).digest('hex');
 }
 
-transactionSchema.pre('save', async function (next) {
+transactionSchema.pre('validate', async function (next) {
     if (!this.isNew) {
         return next();
     }
@@ -79,7 +77,7 @@ transactionSchema.pre('save', async function (next) {
             commandId: this.commandId,
         };
         
-        this.hash = await computeHash(hashData);
+        this.hash = computeHash(hashData);
         
         if (lastTransaction) {
             const lastEndTime = lastTransaction.timestamp.getTime();
