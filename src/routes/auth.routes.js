@@ -38,18 +38,17 @@ const resetPasswordSchema = z.object({
  */
 function setAuthCookies(res, accessToken, refreshToken) {
   const isProd = process.env.NODE_ENV === 'production';
-
-  res.cookie('accessToken', accessToken, {
+  const cookieOptions = {
     httpOnly: true,
-    secure: isProd,
-    sameSite: 'lax',
+    secure: true, // Required for sameSite: 'none'
+    sameSite: isProd ? 'none' : 'lax', // Use 'none' for Vercel/Render cross-domain
     maxAge: 15 * 60 * 1000, // 15 minutes
-  });
+  };
+
+  res.cookie('accessToken', accessToken, cookieOptions);
 
   res.cookie('refreshToken', refreshToken, {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: 'lax',
+    ...cookieOptions,
     maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
   });
 }
@@ -59,7 +58,11 @@ function setAuthCookies(res, accessToken, refreshToken) {
  */
 function clearAuthCookies(res) {
   const isProd = process.env.NODE_ENV === 'production';
-  const opts = { httpOnly: true, secure: isProd, sameSite: 'lax' };
+  const opts = {
+    httpOnly: true,
+    secure: true,
+    sameSite: isProd ? 'none' : 'lax'
+  };
   res.clearCookie('accessToken', opts);
   res.clearCookie('refreshToken', opts);
 }
