@@ -1,0 +1,238 @@
+/**
+ * ESP32 IoT Device Firmware - Main Entry Point
+ * 
+ * IoT Device Control Platform - ESP32 Firmware
+ * Connects to WiFi, establishes WSS connection to backend,
+ * and responds to relay control commands.
+ * 
+ * Hardware Requirements:
+ * - ESP32 Dev Module (or compatible)
+ * - SRD-05VDC-SL-C relay module (with flyback diode protection)
+ * 
+ * Pin Configuration:
+ * - GPIO 26: Relay control (default)
+ * 
+ * Environment Variables (via build flags):
+ * - WIFI_SSID: WiFi network name
+ * - WIFI_PASSWORD: WiFi network password
+ * - BACKEND_URL: Backend server hostname (e.g., iot-backend-abc123.onrender.com)
+ * - DEVICE_TOKEN: Device authentication token from registration
+ */
+
+#include <Arduino.h>
+#include <WiFiManager.h>
+#include <websocket_client.h>
+#include <relay_controller.h>
+
+// ============================================================================
+// CREDENTIAL CONFIGURATION
+// These MUST be provided via build flags - DO NOT hardcode!
+// ============================================================================
+
+#ifndef WIFI_SSID
+#error "WiFi SSID not configured. Set WIFI_SSID in platformio.ini or environment."
+#endif
+
+#ifndef WIFI_PASSWORD
+#error "WiFi Password not configured. Set WIFI_PASSWORD in platformio.ini or environment."
+#endif
+
+#ifndef BACKEND_URL
+#error "Backend URL not configured. Set BACKEND_URL in platformio.ini or environment."
+#endif
+
+#ifndef DEVICE_TOKEN
+#error "Device Token not configured. Set DEVICE_TOKEN in platformio.ini or environment."
+#endif
+
+// ============================================================================
+// GLOBAL INSTANCES
+// ============================================================================
+
+WiFiManager* wifiManager = nullptr;
+WebSocketClient* wsClient = nullptr;
+RelayController* relay = nullptr;
+
+// ============================================================================
+// SETUP
+// ============================================================================
+
+void setup() {
+    // Initialize serial communication
+    Serial.begin(115200);
+    delay(1000);  // Give serial time to initialize
+    
+    Serial.println();
+    Serial.println("===========================================");
+    Serial.println("  ESP32 IoT Device - IoT Control Platform");
+    Serial.println("===========================================");
+    Serial.printf("  Device Token: %.8s...\n", DEVICE_TOKEN);
+    Serial.printf("  Backend URL:  %s\n", BACKEND_URL);
+    Serial.println("===========================================");
+    Serial.println();
+
+    // =========================================================================
+    // STEP 1: Initialize Relay FIRST (safe state before any network)
+    // =========================================================================
+    Serial.println("[Setup] Initializing Relay Controller...");
+    relay = new RelayController(26);  // GPIO 26
+    relay->begin();
+    relay->setDeviceToken(DEVICE_TOKEN);
+    Serial.println("[Setup] Relay initialized in SAFE state (OFF)");
+    Serial.println();
+
+    // =========================================================================
+    // STEP 2: Initialize WiFi
+    // =========================================================================
+    Serial.println("[Setup] Initializing WiFi...");
+    wifiManager = new WiFiManager(WIFI_SSID, WIFI_PASSWORD);
+    
+    // Register disconnect callback
+    wifiManager->onDisconnect([]() {
+        Serial.println("[Callback] WiFi disconnected!");
+    });
+
+    // Connect to WiFi
+    if (wifiManager->connect()) {
+        Serial.printf("[Setup] WiFi connected! IP: %s\n", 
+                     wifiManager->getLocalIP().toString().c_str());
+        Serial.printf("[Setup] Signal strength: %d dBm\n", 
+                     wifiManager->getSignalStrength());
+    } else {
+        Serial.println("[Setup] WiFi connection failed - will retry automatically");
+    }
+
+    // Enable auto-reconnect
+    wifiManager->beginAutoReconnect();
+    Serial.println();
+
+    // =========================================================================
+    // STEP 3: Initialize WebSocket Client
+    // =========================================================================
+    Serial.println("[Setup] Initializing WebSocket client...");
+    wsClient = new WebSocketClient(BACKEND_URL, DEVICE_TOKEN);
+
+    // Register message handler for incoming commands
+    wsClient->onMessage([](JsonDocument& msg) {
+        const char* type = msg["type"] | "unknown";
+        Serial.printf("[WS] Message type: %s\n", type);
+        
+        if (strcmp(type, "command") == 0) {
+            const char* action = msg["action"] | "";
+            const char* commandId = msg["commandId"] | "unknown";
+            int state = msg["state"] | -1;
+            
+            Serial.printf("[WS] Command: action=%s, commandId=%s, state=%d\n", 
+                         action, commandId, state);
+            
+            if (strcmp(action, "set_relay") == 0) {
+                // Validate state parameter
+                if (state == 0 || state == 1) {
+                    bool newState = (state == 1);
+                    relay->setState(newState);
+                    
+                    // Send acknowledgment
+                    StaticJsonDocument<128> ack;
+                    ack["type"] = "ack";
+                    ack["commandId"] = commandId;
+                    ack["status"] = "success";
+                    ack["relayState"] = state;
+                    
+                    if (wsClient->sendJson(ack)) {
+                        Serial.printf("[WS] ACK sent for command %s\n", commandId);
+                    } else {
+                        Serial.println("[WS] Failed to send ACK");
+                    }
+                    
+                    // Send state report after relay change
+                    delay(50);  // Brief delay to ensure relay has switched
+                    JsonDocument stateReport = relay->getStateJson();
+                    if (wsClient->sendJson(stateReport)) {
+                        Serial.println("[WS] State report sent");
+                    }
+                    
+                    Serial.printf("[Relay] State changed to: %s\n", newState ? "ON" : "OFF");
+                } else {
+                    // Invalid state value
+                    StaticJsonDocument<128> error;
+                    error["type"] = "error";
+                    error["code"] = "INVALID_STATE";
+                    error["message"] = "State must be 0 or 1";
+                    wsClient->sendJson(error);
+                    Serial.println("[WS] Invalid state value received");
+                }
+            } else if (strcmp(action, "ping") == 0) {
+                Serial.println("[WS] Server ping received");
+            } else {
+                // Unknown action
+                StaticJsonDocument<128> error;
+                error["type"] = "error";
+                error["code"] = "UNKNOWN_ACTION";
+                error["message"] = action;
+                wsClient->sendJson(error);
+                Serial.printf("[WS] Unknown action: %s\n", action);
+            }
+        } else if (strcmp(type, "config") == 0) {
+            Serial.println("[WS] Configuration message received (ignored)");
+        } else if (strcmp(type, "welcome") == 0) {
+            const char* deviceId = msg["deviceId"] | "unknown";
+            Serial.printf("[WS] Server welcomed us as device: %s\n", deviceId);
+        } else {
+            Serial.printf("[WS] Unknown message type: %s\n", type);
+        }
+    });
+
+    // Connect to WebSocket server
+    Serial.println("[Setup] Connecting to WebSocket server...");
+    if (wsClient->connect()) {
+        Serial.println("[Setup] WebSocket connection initiated");
+    } else {
+        Serial.println("[Setup] WebSocket connection failed - will retry automatically");
+    }
+
+    Serial.println();
+    Serial.println("[Setup] Initialization complete!");
+    Serial.println("[Setup] Device is ready to receive commands.");
+    Serial.printf("[Setup] Initial relay state: %s\n", relay->getState() ? "ON" : "OFF");
+    Serial.println();
+}
+
+// ============================================================================
+// MAIN LOOP
+// ============================================================================
+
+void loop() {
+    // Handle WiFi connection (auto-reconnect)
+    if (wifiManager != nullptr) {
+        wifiManager->tick();
+    }
+
+    // Handle WebSocket (heartbeat, auto-reconnect)
+    if (wsClient != nullptr) {
+        wsClient->tick();
+    }
+
+    // Small delay to prevent watchdog issues
+    delay(100);
+}
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/**
+ * Print system information to serial
+ * Useful for debugging
+ */
+void printSystemInfo() {
+    Serial.println("--- System Information ---");
+    Serial.printf("Chip Model: %s\n", ESP.getChipModel());
+    Serial.printf("Chip Revision: %d\n", ESP.getChipRevision());
+    Serial.printf("CPU Frequency: %d MHz\n", ESP.getCpuFreqMHz());
+    Serial.printf("Flash Size: %d bytes\n", ESP.getFlashChipSize());
+    Serial.printf("Free Heap: %d bytes\n", ESP.getFreeHeap());
+    Serial.printf("Cycle Count: %lu\n", ESP.getCycleCount());
+    Serial.printf("Uptime: %lu ms\n", millis());
+    Serial.printf("Relay State: %s\n", relay && relay->getState() ? "ON" : "OFF");
+    Serial.println("------------------------");
+}

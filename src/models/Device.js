@@ -27,6 +27,10 @@ const deviceSchema = new mongoose.Schema({
   lastSeen: {
     type: Date,
   },
+  relayState: {
+    type: Boolean,
+    default: false,
+  },
   createdAt: {
     type: Date,
     default: Date.now,

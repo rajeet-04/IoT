@@ -1,8 +1,10 @@
 import express from 'express';
 import { z } from 'zod';
 import Device from '../models/Device.js';
+import Transaction from '../models/Transaction.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
 import { generateDeviceToken } from '../utils/deviceToken.js';
+import { getRegistry } from '../ws/hub.js';
 
 const router = express.Router();
 
@@ -61,6 +63,7 @@ router.get('/', async (req, res, next) => {
         name: d.name,
         status: d.status,
         lastSeen: d.lastSeen,
+        relayState: d.relayState,
         createdAt: d.createdAt,
       })),
     });
@@ -88,6 +91,7 @@ router.get('/:id', async (req, res, next) => {
         name: device.name,
         status: device.status,
         lastSeen: device.lastSeen,
+        relayState: device.relayState,
         createdAt: device.createdAt,
       },
     });
@@ -144,6 +148,85 @@ router.delete('/:id', async (req, res, next) => {
     }
 
     return res.status(200).json({ message: 'Device deleted successfully' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/devices/:id/command — Send command to device via WebSocket
+router.post('/:id/command', async (req, res, next) => {
+  try {
+    const { action } = req.body;
+    
+    if (!action || !['turn_on', 'turn_off', 'toggle'].includes(action)) {
+      return res.status(400).json({ 
+        error: 'Invalid action. Must be: turn_on, turn_off, or toggle' 
+      });
+    }
+
+    // Find device (must belong to user)
+    const device = await Device.findOne({
+      _id: req.params.id,
+      userId: req.userId,
+    });
+
+    if (!device) {
+      return res.status(404).json({ error: 'Device not found' });
+    }
+
+    const commandId = `cmd_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const timestamp = new Date();
+    
+    const newRelayState = action === 'turn_on' ? true : action === 'turn_off' ? false : !device.relayState;
+
+    const transaction = await Transaction.create({
+      deviceId: device.deviceId,
+      userId: req.userId,
+      action,
+      relayState: newRelayState,
+      timestamp,
+      commandId,
+    });
+
+    // Get registry and send command
+    const registry = getRegistry();
+    if (!registry) {
+      return res.status(500).json({ error: 'WebSocket hub not available' });
+    }
+
+    // Check if device is connected
+    if (!registry.isConnected(device.deviceId)) {
+      await Device.updateOne({ _id: device._id }, { $set: { relayState: newRelayState } });
+      return res.status(503).json({ error: 'Device is offline' });
+    }
+
+    const command = {
+      type: 'command',
+      commandId,
+      action,
+      timestamp: timestamp.toISOString()
+    };
+
+    const sent = registry.sendCommand(device.deviceId, command);
+    if (!sent) {
+      return res.status(503).json({ error: 'Failed to send command to device' });
+    }
+
+    await Device.updateOne({ _id: device._id }, { $set: { relayState: newRelayState } });
+
+    return res.status(200).json({
+      success: true,
+      commandId,
+      message: `Command ${action} sent to device`,
+      transaction: {
+        id: transaction._id,
+        hash: transaction.hash,
+        prevHash: transaction.prevHash,
+        action: transaction.action,
+        relayState: transaction.relayState,
+        timestamp: transaction.timestamp,
+      }
+    });
   } catch (err) {
     next(err);
   }
