@@ -192,7 +192,7 @@ void setup() {
             Serial.printf("[WS] Server welcomed us as device: %s\n", deviceId);
             
             // Apply initial state from server if present
-            if (msg.containsKey("relayState")) {
+            if (!msg["relayState"].isNull()) {
                 int initialState = msg["relayState"];
                 bool newState = (initialState == 1);
                 relay->setState(newState);
