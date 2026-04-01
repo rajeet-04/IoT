@@ -31,14 +31,6 @@ export interface PendingCommand {
 }
 
 /**
- * WebSocket message types
- */
-interface WsMessage {
-    type: string;
-    [key: string]: unknown;
-}
-
-/**
  * Device store state
  */
 interface DeviceState {
@@ -46,6 +38,7 @@ interface DeviceState {
     wsStatus: 'connecting' | 'connected' | 'disconnected' | 'reconnecting';
     pendingCommands: Map<string, PendingCommand>;
     ws: WebSocket | null;
+    pollInterval: ReturnType<typeof setInterval> | null;
 }
 
 /**
@@ -61,112 +54,6 @@ interface DeviceActions {
     setWsStatus: (status: DeviceState['wsStatus']) => void;
 }
 
-/**
- * WebSocket client with auto-reconnect
- */
-function createWsClient(
-    url: string,
-    onMessage: (msg: WsMessage) => void,
-    onStatusChange: (status: DeviceState['wsStatus']) => void
-): WebSocket {
-    let reconnectDelay = 1000;
-    const maxDelay = 30000;
-    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-
-    function connect() {
-        onStatusChange('connecting');
-        
-        const ws = new WebSocket(url);
-        
-        ws.onopen = () => {
-            reconnectDelay = 1000; // Reset backoff on success
-            onStatusChange('connected');
-            console.log('[WS] Connected');
-        };
-
-        ws.onclose = () => {
-            onStatusChange('reconnecting');
-            console.log('[WS] Disconnected, reconnecting...');
-            scheduleReconnect();
-        };
-
-        ws.onerror = (error) => {
-            console.error('[WS] Error:', error);
-        };
-
-        ws.onmessage = (event) => {
-            try {
-                const msg = JSON.parse(event.data) as WsMessage;
-                onMessage(msg);
-            } catch (error) {
-                console.error('[WS] Parse error:', error);
-            }
-        };
-
-        return ws;
-    }
-
-    function scheduleReconnect() {
-        if (reconnectTimer) return;
-        
-        reconnectTimer = setTimeout(() => {
-            reconnectTimer = null;
-            connect();
-            reconnectDelay = Math.min(reconnectDelay * 2, maxDelay);
-        }, reconnectDelay);
-    }
-
-    return connect();
-}
-
-/**
- * Handle incoming WebSocket messages
- */
-function handleWsMessage(
-    msg: WsMessage,
-    set: (state: Partial<DeviceState>) => void,
-    get: () => DeviceState
-) {
-    const { devices, pendingCommands } = get();
-
-    switch (msg.type) {
-        case 'state_update':
-            // Update device state from ESP32
-            set({
-                devices: devices.map(d => 
-                    d.deviceId === msg.deviceId 
-                        ? { ...d, relayState: msg.state as boolean, isConnected: true }
-                        : d
-                )
-            });
-            break;
-
-        case 'command_response':
-            // Update pending command status
-            const newPending = new Map(pendingCommands);
-            const cmd = newPending.get(msg.commandId as string);
-            if (cmd) {
-                newPending.set(msg.commandId as string, {
-                    ...cmd,
-                    status: msg.success ? 'success' : 'error',
-                    error: msg.error as string | undefined,
-                });
-                set({ pendingCommands: newPending });
-            }
-            break;
-
-        case 'presence_change':
-            // Update device presence
-            set({
-                devices: devices.map(d => 
-                    d.deviceId === msg.deviceId 
-                        ? { ...d, status: msg.status as 'online' | 'offline', isConnected: msg.status === 'online' }
-                        : d
-                )
-            });
-            break;
-    }
-}
 
 /**
  * Create device store
@@ -176,28 +63,28 @@ export const useDeviceStore = create<DeviceState & DeviceActions>((set, get) => 
     wsStatus: 'disconnected',
     pendingCommands: new Map(),
     ws: null,
+    pollInterval: null,
 
-    init: (backendUrl: string) => {
-        // Convert http:// to ws://
-        const wsUrl = backendUrl.replace(/^http/, 'ws') + '/ws';
+    init: (_backendUrl: string) => {
+        // /ws is for ESP32 device tokens only — use HTTP polling instead
+        set({ wsStatus: 'connected' });
         
-        const ws = createWsClient(
-            wsUrl,
-            (msg) => handleWsMessage(msg, set, get),
-            (status) => set({ wsStatus: status })
-        );
-        
-        set({ ws, wsStatus: 'connecting' });
-        
-        // Fetch devices after connection
+        // Fetch immediately
         get().fetchDevices();
+
+        // Poll every 10 seconds to keep device list fresh
+        const pollInterval = setInterval(() => {
+            get().fetchDevices();
+        }, 10000);
+
+        set({ pollInterval });
     },
 
     disconnect: () => {
-        const { ws } = get();
-        if (ws) {
-            ws.close();
-            set({ ws: null, wsStatus: 'disconnected' });
+        const { pollInterval } = get();
+        if (pollInterval) {
+            clearInterval(pollInterval);
+            set({ pollInterval: null, wsStatus: 'disconnected' });
         }
     },
 

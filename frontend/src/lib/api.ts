@@ -1,28 +1,56 @@
 /**
  * API Client - Backend Communication
  * 
- * Provides typed fetch wrapper with cookie-based authentication.
- * All requests automatically include httpOnly cookies.
+ * Provides typed fetch wrapper with Bearer token authentication.
+ * Token is stored in localStorage for cross-origin compatibility.
  */
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000';
 
+// Token management
+export const tokenStore = {
+    get: (): string | null => {
+        if (typeof window === 'undefined') return null;
+        return localStorage.getItem('accessToken');
+    },
+    set: (token: string) => {
+        if (typeof window === 'undefined') return;
+        localStorage.setItem('accessToken', token);
+    },
+    clear: () => {
+        if (typeof window === 'undefined') return;
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+    },
+    setRefresh: (token: string) => {
+        if (typeof window === 'undefined') return;
+        localStorage.setItem('refreshToken', token);
+    },
+    getRefresh: (): string | null => {
+        if (typeof window === 'undefined') return null;
+        return localStorage.getItem('refreshToken');
+    },
+};
+
 /**
- * Fetch wrapper with error handling and cookie support
- * @param {string} path - API endpoint path
- * @param {RequestInit} options - Fetch options
- * @returns {Promise<Response>}
+ * Fetch wrapper with error handling and Bearer token support
  */
 export async function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
     const url = `${BACKEND_URL}${path}`;
-    
+    const token = tokenStore.get();
+
+    const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...(options.headers as Record<string, string>),
+    };
+
+    if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+    }
+
     const response = await fetch(url, {
         ...options,
-        credentials: 'include', // Include httpOnly cookies
-        headers: {
-            'Content-Type': 'application/json',
-            ...options.headers,
-        },
+        headers,
     });
 
     if (!response.ok) {
@@ -33,16 +61,10 @@ export async function apiFetch(path: string, options: RequestInit = {}): Promise
     return response;
 }
 
-/**
- * GET request helper
- */
 export async function apiGet(path: string): Promise<Response> {
     return apiFetch(path, { method: 'GET' });
 }
 
-/**
- * POST request helper
- */
 export async function apiPost(path: string, body: unknown): Promise<Response> {
     return apiFetch(path, {
         method: 'POST',
@@ -50,9 +72,6 @@ export async function apiPost(path: string, body: unknown): Promise<Response> {
     });
 }
 
-/**
- * PUT request helper
- */
 export async function apiPut(path: string, body: unknown): Promise<Response> {
     return apiFetch(path, {
         method: 'PUT',
@@ -60,16 +79,11 @@ export async function apiPut(path: string, body: unknown): Promise<Response> {
     });
 }
 
-/**
- * DELETE request helper
- */
 export async function apiDelete(path: string): Promise<Response> {
     return apiFetch(path, { method: 'DELETE' });
 }
 
-// Export backend URL for WebSocket connection
 export const getBackendUrl = () => BACKEND_URL;
 export const getWebSocketUrl = () => {
-    // Convert http:// to ws:// or https:// to wss://
     return BACKEND_URL.replace(/^http/, 'ws');
 };

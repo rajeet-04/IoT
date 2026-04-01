@@ -1,11 +1,23 @@
 import { verifyToken } from '../utils/jwt.js';
 
 /**
- * Express middleware that requires a valid access token cookie.
+ * Extract token from either Authorization header or cookie.
+ */
+function extractToken(req) {
+  const authHeader = req.headers['authorization'];
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    return authHeader.slice(7);
+  }
+  return req.cookies?.accessToken || null;
+}
+
+/**
+ * Express middleware that requires a valid access token.
+ * Accepts token from Authorization: Bearer header OR accessToken cookie.
  * Sets req.userId on success, returns 401 on failure.
  */
 export function requireAuth(req, res, next) {
-  const token = req.cookies?.accessToken;
+  const token = extractToken(req);
 
   if (!token) {
     return res.status(401).json({ error: 'Authentication required' });
@@ -26,7 +38,7 @@ export function requireAuth(req, res, next) {
  * Does NOT block the request.
  */
 export function optionalAuth(req, res, next) {
-  const token = req.cookies?.accessToken;
+  const token = extractToken(req);
 
   if (!token) {
     req.userId = null;

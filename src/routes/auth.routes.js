@@ -40,17 +40,20 @@ function setAuthCookies(res, accessToken, refreshToken) {
   const isProd = process.env.NODE_ENV === 'production';
   const cookieOptions = {
     httpOnly: true,
-    secure: true, // Required for sameSite: 'none'
-    sameSite: isProd ? 'none' : 'lax', // Use 'none' for Vercel/Render cross-domain
-    maxAge: 15 * 60 * 1000, // 15 minutes
+    secure: true,
+    sameSite: isProd ? 'none' : 'lax',
+    maxAge: 15 * 60 * 1000,
   };
 
+  // Set cookies (for same-domain use)
   res.cookie('accessToken', accessToken, cookieOptions);
-
   res.cookie('refreshToken', refreshToken, {
     ...cookieOptions,
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    maxAge: 7 * 24 * 60 * 60 * 1000,
   });
+
+  // Also return in body so cross-domain clients can store in localStorage
+  return { accessToken, refreshToken };
 }
 
 /**
@@ -91,10 +94,11 @@ router.post('/signup', async (req, res, next) => {
 
     const accessToken = generateAccessToken(user._id.toString());
     const refreshToken = generateRefreshToken(user._id.toString());
-    setAuthCookies(res, accessToken, refreshToken);
+    const tokens = setAuthCookies(res, accessToken, refreshToken);
 
     return res.status(201).json({
       user: { id: user._id, email: user.email },
+      ...tokens,
     });
   } catch (err) {
     next(err);
@@ -126,10 +130,11 @@ router.post('/login', async (req, res, next) => {
 
     const accessToken = generateAccessToken(user._id.toString());
     const refreshToken = generateRefreshToken(user._id.toString());
-    setAuthCookies(res, accessToken, refreshToken);
+    const tokens = setAuthCookies(res, accessToken, refreshToken);
 
     return res.status(200).json({
       user: { id: user._id, email: user.email },
+      ...tokens,
     });
   } catch (err) {
     next(err);
