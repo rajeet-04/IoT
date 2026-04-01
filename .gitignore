@@ -3,3 +3,4 @@ node_modules
 frontend/.next/*
 
 cookies.txt
+firmware/platformio.ini
