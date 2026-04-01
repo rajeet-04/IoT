@@ -19,6 +19,7 @@
 The ESP32 firmware uses the **Arduino framework** (not ESP-IDF native) because it provides the fastest development path for a simple relay-control device. The arduino-esp32 core 3.x series is based on ESP-IDF v5.5.x, giving access to modern WiFi and TLS capabilities.
 
 For WebSocket communication, the **built-in `esp_websocket_client`** component is the right choice over third-party libraries like `WebSockets2_Generic` because:
+
 - It's maintained by Espressif directly
 - Supports WSS (TLS) out of the box with mbedtls
 - Has built-in auto-reconnect with configurable timeout
@@ -57,12 +58,14 @@ lib_deps =
 The backend runs a **single Node.js process** combining Express (HTTP REST API) and `ws` (WebSocket server) on the same port. This is the pattern Render's own documentation demonstrates and is optimal for a low-cost single-instance deployment.
 
 **Why `ws` over Socket.io:**
+
 - Socket.io adds ~10x bundle size for features we don't need (rooms, namespaces, fallback transports)
 - ESP32 clients connect via raw WebSocket — Socket.io's protocol wrapper would require a custom ESP32 client
 - `ws` is lighter, faster, and sufficient for our connection count (1 ESP32 + a handful of browser clients)
 - Render's official WebSocket docs use `ws` as their example
 
 **Why Express 5 over alternatives:**
+
 - Fastify is faster but adds complexity we don't need at this scale
 - Hono is great for edge but Express has the ecosystem for auth, validation middleware, etc.
 - Express 5 has resolved its long RC period and is production-stable
@@ -97,12 +100,14 @@ backend/
 **Driver choice: Raw `mongodb` driver vs Mongoose**
 
 Use **Mongoose** for this project because:
+
 - Schema validation at the model level prevents bad data from entering the blockchain-style transaction log
 - Middleware hooks (`pre('save')`) are perfect for computing transaction hashes in the immutable log pattern
 - Virtuals and getters simplify duration calculations for on/off events
 - The performance overhead is negligible at v1 scale
 
 **Connection strategy:**
+
 - Single `MongoClient` instance shared across the app (connection pooling built-in)
 - Connect on server startup, reuse for all requests
 - Use `serverApi: { version: '1' }` for Stable API compatibility with future Atlas upgrades
@@ -131,17 +136,20 @@ Use **Mongoose** for this project because:
 ### Rationale
 
 **Next.js 16** is the right choice because:
+
 - The web frontend needs both SSR (for auth pages, SEO) and real-time client-side updates (WebSocket dashboard)
 - Next.js App Router handles this split naturally — Server Components for static content, Client Components for the live dashboard
 - API routes can proxy to the Render backend if needed, or connect directly to MongoDB Atlas for read-heavy pages
 - Turbopack makes local development fast
 
 **Why not a separate SPA (Vite + React):**
+
 - Next.js gives us SSR for auth pages out of the box
 - API route proxying simplifies CORS (frontend and backend on same origin)
 - Single deploy target if hosting on Vercel, or can be built as static and served from Render Static Site
 
 **State management: Zustand over alternatives:**
+
 - Redux Toolkit is overkill for device status + transaction log state
 - React Context + useReducer works but gets messy with WebSocket event handling
 - Zustand provides a clean store with minimal boilerplate and built-in devtools
@@ -255,12 +263,13 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: WS_HEARTBEAT_INTERVAL
-        value: "30000"
+        value: "1000"
 ```
 
 ### Render WebSocket Considerations
 
 **Critical findings from Render's official docs (updated Feb 2026):**
+
 - Free tier WebSockets are fully supported
 - Free services spin down after **15 minutes** without HTTP or WebSocket activity
 - WebSocket connections close when instances are replaced (deployments, maintenance)
@@ -342,12 +351,12 @@ pio init --board esp32dev --project-option "framework=arduino"
 
 ## Sources
 
-- **ESP WebSocket Client**: Espressif ESP-Protocols official docs — https://docs.espressif.com/projects/esp-protocols/esp_websocket_client/docs/latest/
-- **arduino-esp32 v3.3.7**: GitHub releases — https://github.com/espressif/arduino-esp32/releases
-- **ArduinoJson v7**: Official documentation — https://arduinojson.org/v7/
-- **WebSockets on Render**: Render official docs — https://render.com/docs/websocket
-- **Render free tier WebSocket update**: Render changelog (Feb 24, 2026) — https://render.com/changelog/free-web-services-now-remain-active-while-receiving-websocket-messages
-- **ws library**: npm — https://www.npmjs.com/package/ws (v8.19.0)
-- **MongoDB Node.js Driver v7.1.1**: npm — https://www.npmjs.com/package/mongodb
-- **Next.js 16.2**: Next.js blog — https://nextjs.org/blog/next-16-2
-- **Best WebSocket Libraries for Node.js 2026**: PkgPulse — https://www.pkgpulse.com/blog/best-websocket-libraries-nodejs-2026
+- **ESP WebSocket Client**: Espressif ESP-Protocols official docs — <https://docs.espressif.com/projects/esp-protocols/esp_websocket_client/docs/latest/>
+- **arduino-esp32 v3.3.7**: GitHub releases — <https://github.com/espressif/arduino-esp32/releases>
+- **ArduinoJson v7**: Official documentation — <https://arduinojson.org/v7/>
+- **WebSockets on Render**: Render official docs — <https://render.com/docs/websocket>
+- **Render free tier WebSocket update**: Render changelog (Feb 24, 2026) — <https://render.com/changelog/free-web-services-now-remain-active-while-receiving-websocket-messages>
+- **ws library**: npm — <https://www.npmjs.com/package/ws> (v8.19.0)
+- **MongoDB Node.js Driver v7.1.1**: npm — <https://www.npmjs.com/package/mongodb>
+- **Next.js 16.2**: Next.js blog — <https://nextjs.org/blog/next-16-2>
+- **Best WebSocket Libraries for Node.js 2026**: PkgPulse — <https://www.pkgpulse.com/blog/best-websocket-libraries-nodejs-2026>

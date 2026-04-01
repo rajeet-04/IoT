@@ -311,7 +311,7 @@ void loop() {
     }
     
     // Send heartbeat every 30 seconds
-    if (wsConnected && now - lastHeartbeat > 30000) {
+    if (wsConnected && now - lastHeartbeat > 1000) {
         sendHeartbeat();
         lastHeartbeat = now;
     }

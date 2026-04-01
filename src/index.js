@@ -60,7 +60,7 @@ async function gracefulShutdown(signal) {
     const shutdownTimeout = setTimeout(() => {
         console.error('Shutdown timeout exceeded. Forcing exit.');
         process.exit(1);
-    }, 30000);
+    }, 1000);
 
     try {
         // Shutdown WebSocket hub first

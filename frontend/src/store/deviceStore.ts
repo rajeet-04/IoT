@@ -93,8 +93,8 @@ export const useDeviceStore = create<DeviceState & DeviceActions>((set, get) => 
             const res = await apiGet('/api/devices');
             const data = await res.json();
             set({
-                devices: data.devices.map((d: { _id: string; deviceId: string; name: string; status: string; lastSeen: string | null; relayState?: boolean }) => ({
-                    id: d._id,
+                devices: data.devices.map((d: { id: string; deviceId: string; name: string; status: string; lastSeen: string | null; relayState?: boolean }) => ({
+                    id: d.id || (d as any)._id,
                     deviceId: d.deviceId,
                     name: d.name,
                     status: d.status as 'online' | 'offline',

@@ -106,7 +106,7 @@ export function attachWebSocketHub(server) {
                         ws.terminate();
                     }, 10000);
                 }
-            }, 30000);
+            }, 1000);
 
             // Handle pong response
             ws.on('pong', () => {
@@ -200,7 +200,7 @@ function startPresenceMonitor() {
         } catch (error) {
             console.error('[WS Presence] Error during presence check:', error);
         }
-    }, 30000); // Check every 30 seconds
+    }, 1000); // Check every 1 seconds
 }
 
 /**

@@ -22,6 +22,7 @@ This system follows a **hub-and-spoke (star) architecture** where the Render bac
 ```
 
 **Key Architectural Decisions:**
+
 - **Centralized Hub Pattern**: Render server mediates all communication, preventing direct ESP32-to-web connections
 - **Device Shadow Pattern**: Backend maintains current device state for quick queries without polling hardware
 - **Blockchain Transaction Log**: Immutable append-only record of all state changes in MongoDB
@@ -159,6 +160,7 @@ Tamper detection: recompute hash chain to verify integrity
 ### 4.2 WebSocket Message Schema
 
 **ESP32 → Backend:**
+
 ```json
 // Heartbeat
 { "type": "heartbeat", "deviceId": "esp32-001", "uptime": 12345 }
@@ -171,15 +173,17 @@ Tamper detection: recompute hash chain to verify integrity
 ```
 
 **Backend → ESP32:**
+
 ```json
 // Relay control command
 { "type": "command", "commandId": "cmd-123", "action": "set_relay", "state": 1 }
 
 // Configuration update
-{ "type": "config", "heartbeatInterval": 30000 }
+{ "type": "config", "heartbeatInterval": 1000 }
 ```
 
 **Backend ↔ Web App:**
+
 ```json
 // State update broadcast
 { "type": "state_update", "deviceId": "esp32-001", "state": "on", "timestamp": "..." }
@@ -218,11 +222,13 @@ Tamper detection: recompute hash chain to verify integrity
 ```
 
 **Web App Authentication:**
+
 - JWT-based authentication with refresh tokens
 - HTTP-only cookies for token storage
 - Protected API routes with middleware validation
 
 **ESP32 Authentication:**
+
 - Pre-shared device tokens stored in MongoDB
 - Token sent during WebSocket handshake
 - Backend validates token before accepting connection
@@ -252,6 +258,7 @@ Tamper detection: recompute hash chain to verify integrity
 ## 6. Suggested Build Order
 
 ### Phase 1: Foundation (Week 1-2)
+
 **Priority: Backend Core + Database Schema**
 
 1. **MongoDB Atlas Setup**
@@ -274,22 +281,23 @@ Tamper detection: recompute hash chain to verify integrity
 **Dependencies:** MongoDB Atlas must be ready before backend development
 
 ### Phase 2: Real-time Communication (Week 3-4)
+
 **Priority: WebSocket Infrastructure**
 
-4. **Backend WebSocket Hub**
+1. **Backend WebSocket Hub**
    - WebSocket server setup on Render
    - Connection management (registry by deviceId)
    - Message routing logic
    - Heartbeat monitoring system
 
-5. **ESP32 Firmware v1**
+2. **ESP32 Firmware v1**
    - WiFi connection management
    - WebSocket client implementation
    - Relay control logic
    - Heartbeat sending
    - Basic error handling
 
-6. **Web App Real-time Updates**
+3. **Web App Real-time Updates**
    - WebSocket client integration
    - Real-time state display
    - Device control UI (on/off buttons)
@@ -298,15 +306,16 @@ Tamper detection: recompute hash chain to verify integrity
 **Dependencies:** Backend REST API must be functional before WebSocket layer
 
 ### Phase 3: Transaction System (Week 5-6)
+
 **Priority: Blockchain-style Logging**
 
-7. **Transaction Logger**
+1. **Transaction Logger**
    - Hash chain implementation
    - Transaction recording on state changes
    - Append-only collection enforcement
    - Transaction verification utility
 
-8. **Transaction History UI**
+2. **Transaction History UI**
    - Transaction log display in dashboard
    - Hash chain visualization
    - Filtering and search capabilities
@@ -315,15 +324,16 @@ Tamper detection: recompute hash chain to verify integrity
 **Dependencies:** WebSocket communication must be stable before transaction logging
 
 ### Phase 4: Polish & Production (Week 7-8)
+
 **Priority: Security, Reliability, Deployment**
 
-9. **Security Hardening**
+1. **Security Hardening**
    - Device token authentication
    - Rate limiting
    - Input validation
    - Error handling improvements
 
-10. **Production Deployment**
+2. **Production Deployment**
     - Render deployment configuration
     - Environment variable management
     - Monitoring and logging setup
@@ -338,6 +348,7 @@ MongoDB Atlas → Backend REST API → Web App Shell → WebSocket Hub → ESP32
 ```
 
 **Key Dependencies:**
+
 - Database schema must exist before any data operations
 - REST API must work before WebSocket layer (fallback + auth)
 - WebSocket communication must be stable before transaction logging
@@ -384,6 +395,7 @@ Current (v1):                    Future (v2+):
 ```
 
 **When to Consider Migration:**
+
 - More than 10 devices requiring simultaneous connections
 - Need for guaranteed message delivery
 - Requirement for device provisioning at scale

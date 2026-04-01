@@ -25,7 +25,7 @@ WebSocketClient::WebSocketClient(const char* backendUrl, const char* deviceToken
     , _deviceToken(deviceToken)
     , _connected(false)
     , _lastHeartbeat(0)
-    , _heartbeatInterval(30000)
+    , _heartbeatInterval(1000)
 {
     _instance = this;
 }
