@@ -4,7 +4,7 @@
  * Controls SRD-05VDC-SL-C relay with safe boot state and state reporting.
  * Includes flyback diode protection wiring diagram.
  * 
- * Default Pin: GPIO 26
+ * Default Pin: GPIO 2 (D2)
  * 
  * Wiring Diagram (CRITICAL - Follow exactly for safety):
  * 
@@ -14,12 +14,12 @@
  *                |
  *     GND ------+------ Relay Module GND
  *                |
- *    ESP32 -----+------ Relay Module Signal (GPIO 26)
+ *    ESP32 -----+------ Relay Module Signal (GPIO 2)
  *     GND ------+------ Relay Module GND (common ground)
  * 
  * For transistror-driven relay (recommended for ESP32):
  * 
- *     ESP32 GPIO 26 ----[1kΩ resistor]----+
+ *     ESP32 GPIO 2 ----[1kΩ resistor]----+
  *                                         |
  *                              +----[2N2222 NPN]----+
  *                              |         |          |
@@ -54,7 +54,7 @@ public:
      * Constructor
      * @param gpioPin GPIO pin connected to relay signal input
      */
-    RelayController(int gpioPin = 26);
+    RelayController(int gpioPin = 2);
 
     /**
      * Initialize the relay controller
@@ -117,7 +117,7 @@ private:
  *                    ┌─────────────────┐
  *                    │   ESP32 DevKit  │
  *                    │                 │
- *     GPIO 26 ──────┤ (26)            │
+ *     GPIO 2 ───────┤ (D2)            │
  *                    │                 │
  *     3.3V ─────────┤ (3V3)           │
  *                    │                 │
@@ -149,7 +149,7 @@ private:
  *              │           │
  *              │  VCC ─────┼── +5V
  *              │  GND ─────┼── GND
- *    GPIO 26 ─┤  IN ──────┼── Signal (via 1kΩ resistor)
+ *    GPIO 2 ──┤  IN ──────┼── Signal (via 1kΩ resistor)
  *              └───────────┘
  *                    │
  *              [SRD-05VDC-SL-C Relay Coil]

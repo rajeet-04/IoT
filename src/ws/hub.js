@@ -87,10 +87,11 @@ export function attachWebSocketHub(server) {
             ws.deviceId = deviceId;
             ws.isWebClient = false;
 
-            // Send welcome message
+            // Send welcome message with initial state
             ws.send(JSON.stringify({
                 type: 'welcome',
                 deviceId: deviceId,
+                relayState: device.relayState ? 1 : 0,
                 timestamp: new Date().toISOString()
             }));
 
@@ -106,7 +107,7 @@ export function attachWebSocketHub(server) {
                         ws.terminate();
                     }, 10000);
                 }
-            }, 1000);
+            }, 30000);
 
             // Handle pong response
             ws.on('pong', () => {

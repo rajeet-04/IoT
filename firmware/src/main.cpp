@@ -10,7 +10,7 @@
  * - SRD-05VDC-SL-C relay module (with flyback diode protection)
  * 
  * Pin Configuration:
- * - GPIO 26: Relay control (default)
+ * - GPIO 2: Relay control (D2)
  * 
  * Environment Variables (via build flags):
  * - WIFI_SSID: WiFi network name
@@ -75,7 +75,7 @@ void setup() {
     // STEP 1: Initialize Relay FIRST (safe state before any network)
     // =========================================================================
     Serial.println("[Setup] Initializing Relay Controller...");
-    relay = new RelayController(26);  // GPIO 26
+    relay = new RelayController(2);  // GPIO 2 (D2)
     relay->begin();
     relay->setDeviceToken(DEVICE_TOKEN);
     Serial.println("[Setup] Relay initialized in SAFE state (OFF)");
@@ -125,42 +125,55 @@ void setup() {
             Serial.printf("[WS] Command: action=%s, commandId=%s, state=%d\n", 
                          action, commandId, state);
             
+            bool newState = false;
+            bool validAction = false;
+            
             if (strcmp(action, "set_relay") == 0) {
-                // Validate state parameter
                 if (state == 0 || state == 1) {
-                    bool newState = (state == 1);
-                    relay->setState(newState);
-                    
-                    // Send acknowledgment
-                    JsonDocument ack;
-                    ack["type"] = "ack";
-                    ack["commandId"] = commandId;
-                    ack["status"] = "success";
-                    ack["relayState"] = state;
-                    
-                    if (wsClient->sendJson(ack)) {
-                        Serial.printf("[WS] ACK sent for command %s\n", commandId);
-                    } else {
-                        Serial.println("[WS] Failed to send ACK");
-                    }
-                    
-                    // Send state report after relay change
-                    delay(50);  // Brief delay to ensure relay has switched
-                    JsonDocument stateReport = relay->getStateJson();
-                    if (wsClient->sendJson(stateReport)) {
-                        Serial.println("[WS] State report sent");
-                    }
-                    
-                    Serial.printf("[Relay] State changed to: %s\n", newState ? "ON" : "OFF");
+                    newState = (state == 1);
+                    validAction = true;
                 } else {
                     // Invalid state value
                     JsonDocument error;
                     error["type"] = "error";
                     error["code"] = "INVALID_STATE";
-                    error["message"] = "State must be 0 or 1";
+                    error["message"] = "State must be 0 or 1 for set_relay";
                     wsClient->sendJson(error);
                     Serial.println("[WS] Invalid state value received");
+                    return;
                 }
+            } else if (strcmp(action, "turn_on") == 0) {
+                newState = true;
+                validAction = true;
+            } else if (strcmp(action, "turn_off") == 0) {
+                newState = false;
+                validAction = true;
+            }
+
+            if (validAction) {
+                relay->setState(newState);
+                
+                // Send acknowledgment
+                JsonDocument ack;
+                ack["type"] = "ack";
+                ack["commandId"] = commandId;
+                ack["status"] = "success";
+                ack["relayState"] = newState ? 1 : 0;
+                
+                if (wsClient->sendJson(ack)) {
+                    Serial.printf("[WS] ACK sent for command %s\n", commandId);
+                } else {
+                    Serial.println("[WS] Failed to send ACK");
+                }
+                
+                // Send state report after relay change
+                delay(50);  // Brief delay to ensure relay has switched
+                JsonDocument stateReport = relay->getStateJson();
+                if (wsClient->sendJson(stateReport)) {
+                    Serial.println("[WS] State report sent");
+                }
+                
+                Serial.printf("[Relay] Action %s: state changed to %s\n", action, newState ? "ON" : "OFF");
             } else if (strcmp(action, "ping") == 0) {
                 Serial.println("[WS] Server ping received");
             } else {
@@ -177,6 +190,14 @@ void setup() {
         } else if (strcmp(type, "welcome") == 0) {
             const char* deviceId = msg["deviceId"] | "unknown";
             Serial.printf("[WS] Server welcomed us as device: %s\n", deviceId);
+            
+            // Apply initial state from server if present
+            if (msg.containsKey("relayState")) {
+                int initialState = msg["relayState"];
+                bool newState = (initialState == 1);
+                relay->setState(newState);
+                Serial.printf("[Relay] Init state applied from server: %s\n", newState ? "ON" : "OFF");
+            }
         } else {
             Serial.printf("[WS] Unknown message type: %s\n", type);
         }
