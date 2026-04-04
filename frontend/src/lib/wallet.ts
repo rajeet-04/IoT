@@ -3,15 +3,16 @@
  * Uses @metamask/connect-evm for EVM wallet integration
  */
 
-import { createEVMClient, type EVMClient } from '@metamask/connect-evm';
+import { createEVMClient } from '@metamask/connect-evm';
 
-let evmClient: EVMClient | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let evmClient: any = null;
 
 /**
  * Singleton client initialization
  * Configured for Sepolia testnet (chainId: 0xaa36a7)
  */
-export async function initWalletClient(): Promise<EVMClient> {
+export async function initWalletClient() {
   if (evmClient) return evmClient;
 
   const infuraKey = typeof window !== 'undefined' 
@@ -86,7 +87,8 @@ export function getProvider() {
 /**
  * Get the EVM client instance
  */
-export function getClient(): EVMClient | null {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function getClient(): any {
   return evmClient;
 }
 
@@ -113,7 +115,7 @@ export async function switchNetwork(chainId: string): Promise<void> {
       method: 'wallet_switchEthereumChain',
       params: [{ chainId }],
     });
-  } catch (switchError: any) {
+  } catch (switchError: unknown) {
     // Chain not added - could prompt to add
     throw switchError;
   }

@@ -9,6 +9,7 @@ import authRoutes from './routes/auth.routes.js';
 import deviceRoutes from './routes/device.routes.js';
 import transactionRoutes from './routes/transaction.routes.js';
 import { attachWebSocketHub, shutdownWebSocketHub } from './ws/hub.js';
+import { initBlockchainListener, startPolling, stopPolling } from './lib/blockchainListener.js';
 
 dotenv.config();
 
@@ -63,6 +64,9 @@ async function gracefulShutdown(signal) {
     }, 1000);
 
     try {
+        // Stop blockchain polling
+        stopPolling();
+
         // Shutdown WebSocket hub first
         await shutdownWebSocketHub();
 
@@ -115,6 +119,18 @@ async function start() {
         const ws = attachWebSocketHub(server);
         wss = ws.wss;
         console.log('WebSocket hub attached');
+
+        // Initialize blockchain listener if configured
+        if (process.env.INFURA_SEPOLIA_URL && process.env.CONTRACT_ADDRESS) {
+            initBlockchainListener(
+                process.env.INFURA_SEPOLIA_URL,
+                process.env.CONTRACT_ADDRESS
+            );
+            startPolling(30000); // Poll every 30 seconds
+            console.log('Blockchain listener started');
+        } else {
+            console.log('Blockchain listener not configured (missing INFURA_SEPOLIA_URL or CONTRACT_ADDRESS)');
+        }
 
     } catch (err) {
         console.error('Failed to start server:', err);

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { logout, getCurrentUser } from '@/lib/auth';
 import type { User } from '@/lib/auth';
-import { LayoutDashboard, LogOut, Menu, X } from 'lucide-react';
+import { LayoutDashboard, LogOut, Menu, X, History } from 'lucide-react';
 
 interface SidebarProps {
     user?: User | null;
@@ -69,6 +69,13 @@ export default function Sidebar({ user }: SidebarProps) {
                     >
                         <LayoutDashboard className="w-5 h-5" />
                         <span>Dashboard</span>
+                    </a>
+                    <a
+                        href="/dashboard/transactions"
+                        className="flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-slate-800 text-slate-300 hover:text-white transition-colors"
+                    >
+                        <History className="w-5 h-5" />
+                        <span>Transaction History</span>
                     </a>
                 </nav>
 
