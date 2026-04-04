@@ -108,10 +108,10 @@ export const useDeviceStore = create<DeviceState & DeviceActions>((set, get) => 
         }
     },
 
-    sendCommand: async (deviceId: string, action: string, params: Record<string, unknown>) => {
+    sendCommand: async (deviceId: string, action: string, _params: Record<string, unknown>) => {
         const { devices, pendingCommands } = get();
         
-        // Find device by MongoDB _id
+        // Find device by MongoDB _id (that's what the UI passes via device.id)
         const device = devices.find(d => d.id === deviceId);
         if (!device) {
             console.error('[Store] Device not found:', deviceId);
@@ -126,8 +126,9 @@ export const useDeviceStore = create<DeviceState & DeviceActions>((set, get) => 
         set({ pendingCommands: newPending });
 
         try {
-            // Send command via HTTP API
-            const res = await apiPost(`/api/devices/${deviceId}/command`, { action });
+            // IMPORTANT: Use device.deviceId (the UUID token), NOT deviceId (MongoDB _id)
+            // The backend route /api/devices/:id/command looks up by deviceId field
+            const res = await apiPost(`/api/devices/${device.deviceId}/command`, { action });
             const data = await res.json();
             
             if (data.success) {

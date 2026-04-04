@@ -43,10 +43,34 @@ const transactionSchema = new mongoose.Schema({
         type: Number,
         default: null,
     },
+    // NEW: Blockchain fields
+    walletAddress: {
+        type: String,
+        lowercase: true,
+        sparse: true,
+    },
+    txHash: {
+        type: String,
+    },
+    blockNumber: {
+        type: Number,
+    },
+    status: {
+        type: String,
+        enum: ['pending', 'confirmed', 'failed'],
+        default: 'pending',
+        index: true,
+    },
+    contractAddress: {
+        type: String,
+        default: process.env.CONTRACT_ADDRESS,
+    },
 });
 
 transactionSchema.index({ deviceId: 1, timestamp: -1 });
 transactionSchema.index({ userId: 1, timestamp: -1 });
+transactionSchema.index({ walletAddress: 1, timestamp: -1 });
+transactionSchema.index({ txHash: 1 }, { sparse: true });
 
 function computeHash(data) {
     const dataStr = JSON.stringify(data);

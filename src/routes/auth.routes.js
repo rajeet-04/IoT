@@ -213,7 +213,40 @@ router.get('/me', requireAuth, async (req, res, next) => {
       return res.status(404).json({ error: 'User not found' });
     }
     return res.status(200).json({
-      user: { id: user._id, email: user.email, createdAt: user.createdAt },
+      user: { id: user._id, email: user.email, createdAt: user.createdAt, walletAddress: user.walletAddress },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/auth/wallet — Update user's wallet address (protected)
+router.post('/wallet', requireAuth, async (req, res, next) => {
+  try {
+    const { walletAddress } = req.body;
+    
+    if (!walletAddress) {
+      return res.status(400).json({ error: 'Wallet address is required' });
+    }
+    
+    // Basic Ethereum address validation
+    if (!/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+      return res.status(400).json({ error: 'Invalid Ethereum address format' });
+    }
+    
+    const user = await User.findByIdAndUpdate(
+      req.userId,
+      { walletAddress: walletAddress.toLowerCase() },
+      { new: true }
+    );
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    return res.status(200).json({
+      message: 'Wallet address updated',
+      walletAddress: user.walletAddress
     });
   } catch (err) {
     next(err);

@@ -2,9 +2,11 @@ import express from 'express';
 import { z } from 'zod';
 import Device from '../models/Device.js';
 import Transaction from '../models/Transaction.js';
+import User from '../models/User.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
 import { generateDeviceToken } from '../utils/deviceToken.js';
 import { getRegistry } from '../ws/hub.js';
+import { sendToBlockchain } from '../lib/blockchainWriter.js';
 
 const router = express.Router();
 
@@ -166,7 +168,7 @@ router.post('/:id/command', async (req, res, next) => {
 
     // Find device (must belong to user)
     const device = await Device.findOne({
-      _id: req.params.id,
+      deviceId: req.params.id,
       userId: req.userId,
     });
 
@@ -179,14 +181,44 @@ router.post('/:id/command', async (req, res, next) => {
     
     const newRelayState = action === 'turn_on' ? true : action === 'turn_off' ? false : !device.relayState;
 
+    // Get user's wallet address for blockchain transaction
+    const user = await User.findById(req.userId);
+    const walletAddress = user?.walletAddress || 'unconnected';
+
     const transaction = await Transaction.create({
       deviceId: device.deviceId,
       userId: req.userId,
+      walletAddress,
       action,
       relayState: newRelayState,
       timestamp,
       commandId,
     });
+
+    // Send to blockchain (non-blocking, so we don't delay device command)
+    if (walletAddress && walletAddress !== 'unconnected') {
+      sendToBlockchain({
+        deviceId: device.deviceId,
+        action,
+        txId: transaction._id.toString(),
+        walletAddress,
+      }).then(async result => {
+        if (result.success && result.txHash) {
+          // Update the transaction record with on-chain confirmation
+          await Transaction.findByIdAndUpdate(transaction._id, {
+            txHash: result.txHash,
+            status: 'confirmed',
+          });
+          console.log(`[COMMAND] Blockchain txn confirmed: ${result.txHash}`);
+        } else {
+          await Transaction.findByIdAndUpdate(transaction._id, { status: 'failed' });
+          console.warn(`[COMMAND] Blockchain write returned no txHash for ${transaction._id}`);
+        }
+      }).catch(async err => {
+        console.error('[COMMAND] Blockchain write failed:', err.message);
+        await Transaction.findByIdAndUpdate(transaction._id, { status: 'failed' });
+      });
+    }
 
     // Get registry and send command
     const registry = getRegistry();
@@ -210,7 +242,8 @@ router.post('/:id/command', async (req, res, next) => {
     const command = {
       type: 'command',
       commandId,
-      action,
+      command: action,   // ESP32 simulator reads 'command' field
+      action,            // keep 'action' for future clients
       timestamp: timestamp.toISOString()
     };
 
