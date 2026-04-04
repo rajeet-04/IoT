@@ -78,21 +78,21 @@ Plans:
 - [ ] 03-04: Responsive design — Tailwind CSS mobile-first layout, connection status indicator, command feedback (success/error toasts)
 
 ### Phase 4: Transaction Audit System
-**Goal**: Every relay action is recorded as a tamper-evident blockchain-style transaction with full history and duration metrics
+**Goal**: Every relay action is recorded as an actual blockchain transaction using MetaMask wallet integration on Sepolia testnet
 **Depends on**: Phase 3
 **Requirements**: TXN-01, TXN-02, TXN-03, TXN-04, BE-03, DASH-02, DASH-03
 **Success Criteria** (what must be TRUE):
-  1. Every ON/OFF action creates an immutable transaction entry in the database
-  2. Each transaction record includes timestamp, user, device, action type, and duration
-  3. Transactions are hash-chained (each entry references previous hash) for tamper detection
-  4. User can view transaction history in a sortable table with timestamps
+  1. Users can connect their MetaMask wallet to the dashboard
+  2. Every ON/OFF action creates an actual blockchain transaction on Sepolia testnet
+  3. Each transaction is signed by the user's wallet (no server-side key management)
+  4. Transaction history shows on-chain verification status with Etherscan links
   5. Dashboard displays total ON duration metrics for the device
 **Plans**: 3 plans
 
 Plans:
-- [ ] 04-01: Transaction logger — MongoDB append-only collection with hash chain computation (SHA-256), Mongoose middleware for prevHash/hash calculation
-- [ ] 04-02: Backend persistence layer — transaction recording on every relay state change, duration calculation, MongoDB Atlas integration
-- [ ] 04-03: Transaction history UI — data table with pagination, chain integrity indicator, duration metrics display
+- [ ] 04-01: Wallet integration — MetaMask Connect EVM SDK, wallet connection UI, IOTEventLog smart contract deployed to Sepolia
+- [ ] 04-02: Blockchain transaction recording — Transaction model with txHash, backend event listener, transaction history API with Etherscan links
+- [ ] 04-03: Transaction history UI — paginated table with blockchain verification, duration summary cards, wallet connect integration
 
 ## Progress
 
