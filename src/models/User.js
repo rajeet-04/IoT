@@ -22,6 +22,12 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: Date.now,
   },
+  walletAddress: {
+    type: String,
+    lowercase: true,
+    sparse: true,
+    index: true,
+  },
 });
 
 userSchema.pre('save', function (next) {

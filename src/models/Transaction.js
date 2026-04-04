@@ -48,12 +48,9 @@ const transactionSchema = new mongoose.Schema({
         type: String,
         lowercase: true,
         sparse: true,
-        index: true,
     },
     txHash: {
         type: String,
-        sparse: true,
-        // Index removed - will be added via schema.index below
     },
     blockNumber: {
         type: Number,

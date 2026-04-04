@@ -2,6 +2,7 @@ import express from 'express';
 import { z } from 'zod';
 import Transaction from '../models/Transaction.js';
 import Device from '../models/Device.js';
+import User from '../models/User.js';
 import { requireAuth } from '../middleware/auth.middleware.js';
 import { 
     getTransactionHistory, 
@@ -43,7 +44,7 @@ router.get('/', async (req, res, next) => {
 
         const query = { userId: req.userId };
         if (deviceId) {
-            const device = await Device.findOne({ _id: deviceId, userId: req.userId });
+            const device = await Device.findOne({ deviceId: deviceId, userId: req.userId });
             if (!device) {
                 return res.status(404).json({ error: 'Device not found' });
             }
@@ -89,7 +90,7 @@ router.get('/:deviceId/history', async (req, res, next) => {
     try {
         // Validate device ownership
         const device = await Device.findOne({
-            _id: req.params.deviceId,
+            deviceId: req.params.deviceId,
             userId: req.userId,
         });
 
@@ -131,7 +132,7 @@ router.get('/:deviceId/history', async (req, res, next) => {
 router.get('/:deviceId/summary', async (req, res) => {
     try {
         const device = await Device.findOne({
-            _id: req.params.deviceId,
+            deviceId: req.params.deviceId,
             userId: req.userId,
         });
 
@@ -155,7 +156,7 @@ router.get('/:deviceId/summary', async (req, res) => {
 router.get('/device/:deviceId/:txId', async (req, res) => {
     try {
         const device = await Device.findOne({
-            _id: req.params.deviceId,
+            deviceId: req.params.deviceId,
             userId: req.userId,
         });
 
@@ -193,7 +194,6 @@ router.get('/wallet/:walletAddress', async (req, res) => {
         const { limit, skip, sort } = historyQuerySchema.parse(req.query);
 
         // Validate that requested wallet belongs to user
-        const User = require('../models/User');
         const user = await User.findById(req.userId);
 
         if (!user || user.walletAddress?.toLowerCase() !== req.params.walletAddress.toLowerCase()) {

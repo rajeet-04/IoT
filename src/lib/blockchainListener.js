@@ -91,47 +91,74 @@ async function pollPendingTransactions() {
         return;
     }
 
-    console.log(`[BLOCKCHAIN] Checking ${pending.length} pending transactions`);
+    // Separate blockchain-relevant from non-blockchain pending
+    const blockchainPending = pending.filter(tx => 
+        tx.walletAddress && tx.walletAddress !== 'unconnected'
+    );
+    const unconnectedPending = pending.filter(tx => 
+        !tx.walletAddress || tx.walletAddress === 'unconnected'
+    );
 
-    for (const tx of pending) {
+    // Auto-fail old unconnected transactions (no wallet = will never confirm on-chain)
+    const EXPIRE_MS = 30 * 60 * 1000; // 30 minutes
+    for (const tx of unconnectedPending) {
+        const age = Date.now() - new Date(tx.timestamp).getTime();
+        if (age > EXPIRE_MS) {
+            await failTransaction(tx._id.toString(), 'No wallet connected — cannot confirm on blockchain');
+            console.log(`[BLOCKCHAIN] Auto-expired unconnected tx: ${tx._id}`);
+        }
+    }
+
+    if (blockchainPending.length === 0) {
+        return;
+    }
+
+    console.log(`[BLOCKCHAIN] Checking ${blockchainPending.length} pending transactions`);
+
+    for (const tx of blockchainPending) {
         try {
-            // Skip if no wallet address (not a blockchain transaction)
-            if (!tx.walletAddress || tx.walletAddress === 'unconnected') {
+            // Skip if already has a txHash (was confirmed by writer but listener not synced yet)
+            if (tx.txHash) {
+                await confirmTransaction(tx._id.toString(), {
+                    txHash: tx.txHash,
+                    blockNumber: tx.blockNumber || 0
+                });
                 continue;
             }
 
-            // Query events for this transaction
-            const fromTime = Math.floor(tx.timestamp.getTime() / 1000) - 60; // 1 minute before
-            const toTime = Math.floor(Date.now() / 1000) + 60; // 1 minute after
+            // Get current block number — queryFilter needs block numbers, NOT timestamps
+            const latestBlock = await provider.getBlockNumber();
+            const fromBlock = Math.max(0, latestBlock - 1000); // ~3-4 hours on Sepolia
 
             const filter = contract.filters.DeviceAction(
-                ethers.encodeBytes32String(tx.deviceId),
+                ethers.keccak256(ethers.toUtf8Bytes(tx.deviceId)),  // must match how writer encoded it
                 null,  // any action
                 null,  // any timestamp
                 tx.walletAddress  // indexed user
             );
 
-            const events = await contract.queryFilter(filter, fromTime, toTime);
+            const events = await contract.queryFilter(filter, fromBlock, 'latest');
 
-            // Find matching event
+            // Find matching event by wallet + deviceId
             for (const event of events) {
-                const [deviceId, action, timestamp, user, dbRecordId] = event.args;
+                const [deviceId, action, timestamp, user] = event.args;
                 
-                // Check if this event matches our transaction
-                const actionMap = { 'turn_on': 'on', 'turn_off': 'off' };
-                const expectedAction = actionMap[tx.action] || tx.action;
-                
-                if (deviceId === ethers.encodeBytes32String(tx.deviceId) && 
-                    user.toLowerCase() === tx.walletAddress.toLowerCase()) {
-                    
+                if (user.toLowerCase() === tx.walletAddress.toLowerCase()) {
                     await confirmTransaction(tx._id.toString(), {
                         txHash: event.transactionHash,
                         blockNumber: Number(event.blockNumber)
                     });
                     
-                    console.log(`[BLOCKCHAIN] Confirmed: ${tx._id} -> ${event.transactionHash}`);
+                    console.log(`[BLOCKCHAIN] Confirmed via listener: ${tx._id} -> ${event.transactionHash}`);
                     break;
                 }
+            }
+
+            // Auto-fail transactions older than 2 hours without confirmation
+            const age = Date.now() - new Date(tx.timestamp).getTime();
+            if (age > 2 * 60 * 60 * 1000) {
+                await failTransaction(tx._id.toString(), 'Transaction confirmation timeout (2h)');
+                console.log(`[BLOCKCHAIN] Timed out: ${tx._id}`);
             }
         } catch (error) {
             console.error(`[BLOCKCHAIN] Error polling ${tx._id}:`, error.message);

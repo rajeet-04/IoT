@@ -1,40 +1,22 @@
 /**
  * Wallet Connection Utilities
- * Uses @metamask/connect-evm for EVM wallet integration
+ * Uses window.ethereum (MetaMask EIP-1193 provider) directly
+ * for reliable connection without SDK spinner issues.
  */
-
-import { createEVMClient } from '@metamask/connect-evm';
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let evmClient: any = null;
 
 /**
- * Singleton client initialization
- * Configured for Sepolia testnet (chainId: 0xaa36a7)
+ * Get the injected MetaMask provider
  */
-export async function initWalletClient() {
-  if (evmClient) return evmClient;
-
-  const infuraKey = typeof window !== 'undefined' 
-    ? (process.env.NEXT_PUBLIC_INFURA_SEPOLIA_KEY || '')
-    : '';
-
-  evmClient = await createEVMClient({
-    dapp: {
-      name: 'IoT Device Control',
-      url: typeof window !== 'undefined' 
-        ? window.location.origin 
-        : 'http://localhost:3000',
-    },
-    api: {
-      supportedNetworks: {
-        // Sepolia testnet (chainId: 11155111 decimal)
-        '0xaa36a7': `https://sepolia.infura.io/v3/${infuraKey}`,
-      },
-    },
-  });
-
-  return evmClient;
+function getEthereumProvider(): any {
+  if (typeof window === 'undefined') return null;
+  // Support multi-wallet setups (MetaMask)
+  const ethereum = (window as any).ethereum;
+  if (!ethereum) return null;
+  // If multiple wallets, prefer MetaMask
+  if (ethereum.providers?.length) {
+    return ethereum.providers.find((p: any) => p.isMetaMask) || ethereum.providers[0];
+  }
+  return ethereum;
 }
 
 /**
@@ -42,28 +24,38 @@ export async function initWalletClient() {
  * Returns connected accounts and chainId
  */
 export async function connectWallet(): Promise<{ accounts: string[]; chainId: string }> {
-  const client = await initWalletClient();
-  return client.connect({ chainIds: ['0xaa36a7'] });
+  const ethereum = getEthereumProvider();
+  if (!ethereum) {
+    throw new Error('MetaMask is not installed. Please install MetaMask extension and reload.');
+  }
+
+  // Request accounts (triggers MetaMask popup)
+  const accounts: string[] = await ethereum.request({ method: 'eth_requestAccounts' });
+  const chainId: string = await ethereum.request({ method: 'eth_chainId' });
+
+  return { accounts, chainId };
 }
 
 /**
- * Disconnect wallet - clears session
+ * Disconnect wallet - clears local state (MetaMask doesn't support programmatic disconnect)
  */
 export async function disconnectWallet(): Promise<void> {
-  if (evmClient) {
-    // Session persistence is handled by MetaMask internally
-    evmClient = null;
-  }
+  // MetaMask doesn't have a programmatic disconnect via EIP-1193
+  // The UI state is cleared by the caller
 }
 
 /**
- * Get current connected accounts
+ * Get current connected accounts (no popup)
  */
 export async function getAccounts(): Promise<string[]> {
-  const client = await initWalletClient();
-  const provider = client.getProvider();
-  const accounts = await provider.request({ method: 'eth_accounts' }) as string[];
-  return accounts || [];
+  const ethereum = getEthereumProvider();
+  if (!ethereum) return [];
+  try {
+    const accounts: string[] = await ethereum.request({ method: 'eth_accounts' });
+    return accounts || [];
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -78,18 +70,11 @@ export async function isConnected(): Promise<boolean> {
  * Get EIP-1193 provider for raw RPC calls
  */
 export function getProvider() {
-  if (!evmClient) {
-    throw new Error('Wallet not initialized. Call initWalletClient() first.');
+  const ethereum = getEthereumProvider();
+  if (!ethereum) {
+    throw new Error('MetaMask not installed.');
   }
-  return evmClient.getProvider();
-}
-
-/**
- * Get the EVM client instance
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export function getClient(): any {
-  return evmClient;
+  return ethereum;
 }
 
 /**
@@ -98,10 +83,39 @@ export function getClient(): any {
 export async function getChainId(): Promise<string | null> {
   try {
     const provider = getProvider();
-    const chainId = await provider.request({ method: 'eth_chainId' }) as string;
+    const chainId: string = await provider.request({ method: 'eth_chainId' });
     return chainId;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Request to switch to Sepolia testnet
+ */
+export async function switchToSepolia(): Promise<void> {
+  const provider = getProvider();
+  try {
+    await provider.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: '0xaa36a7' }], // Sepolia
+    });
+  } catch (switchError: any) {
+    // Error 4902 = chain not added to MetaMask
+    if (switchError.code === 4902) {
+      await provider.request({
+        method: 'wallet_addEthereumChain',
+        params: [{
+          chainId: '0xaa36a7',
+          chainName: 'Sepolia Testnet',
+          nativeCurrency: { name: 'SepoliaETH', symbol: 'ETH', decimals: 18 },
+          rpcUrls: ['https://rpc.sepolia.org'],
+          blockExplorerUrls: ['https://sepolia.etherscan.io'],
+        }],
+      });
+    } else {
+      throw switchError;
+    }
   }
 }
 
@@ -110,13 +124,8 @@ export async function getChainId(): Promise<string | null> {
  */
 export async function switchNetwork(chainId: string): Promise<void> {
   const provider = getProvider();
-  try {
-    await provider.request({
-      method: 'wallet_switchEthereumChain',
-      params: [{ chainId }],
-    });
-  } catch (switchError: unknown) {
-    // Chain not added - could prompt to add
-    throw switchError;
-  }
+  await provider.request({
+    method: 'wallet_switchEthereumChain',
+    params: [{ chainId }],
+  });
 }

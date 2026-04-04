@@ -4,14 +4,20 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import { WebSocketServer } from 'ws';
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
 import { connectDB } from './db/connection.js';
 import authRoutes from './routes/auth.routes.js';
 import deviceRoutes from './routes/device.routes.js';
 import transactionRoutes from './routes/transaction.routes.js';
 import { attachWebSocketHub, shutdownWebSocketHub } from './ws/hub.js';
 import { initBlockchainListener, startPolling, stopPolling } from './lib/blockchainListener.js';
+import { initBlockchainWriter } from './lib/blockchainWriter.js';
 
-dotenv.config();
+// Load .env relative to this file's location (project root), not CWD
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+dotenv.config({ path: resolve(__dirname, '..', '.env') });
 
 const app = express();
 
@@ -130,6 +136,18 @@ async function start() {
             console.log('Blockchain listener started');
         } else {
             console.log('Blockchain listener not configured (missing INFURA_SEPOLIA_URL or CONTRACT_ADDRESS)');
+        }
+
+        // Initialize blockchain writer if configured
+        if (process.env.INFURA_SEPOLIA_URL && process.env.CONTRACT_ADDRESS && process.env.PRIVATE_KEY) {
+            initBlockchainWriter(
+                process.env.INFURA_SEPOLIA_URL,
+                process.env.CONTRACT_ADDRESS,
+                process.env.PRIVATE_KEY
+            );
+            console.log('Blockchain writer initialized');
+        } else {
+            console.log('Blockchain writer not configured (missing PRIVATE_KEY)');
         }
 
     } catch (err) {
