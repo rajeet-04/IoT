@@ -8,10 +8,10 @@ last_updated: "2026-04-04T00:00:00.000Z"
 last_activity: 2026-04-04
 progress:
   total_phases: 4
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 15
-  completed_plans: 8
-  percent: 53
+  completed_plans: 11
+  percent: 75
 ---
 
 # Project State
@@ -27,9 +27,12 @@ See: .planning/PROJECT.md (updated 2026-04-04)
 
 Phase: 2 (Firmware Connection) — COMPLETE ✅
 Phase: 3 (Real-time Dashboard) — COMPLETE ✅
+  - Architecture: HTTP polling (not WebSocket as planned)
+  - Backend: device.routes.js routes commands via registry
+  - Frontend: 10s polling via deviceStore.ts
 Last activity: 2026-04-04
 
-Progress: [▓▓▓▓▓▓▓▓▓░] 53%
+Progress: [▓▓▓▓▓▓▓▓▓░] 75%
 
 ## Performance Metrics
 
