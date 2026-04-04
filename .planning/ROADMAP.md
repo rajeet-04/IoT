@@ -53,7 +53,7 @@ Plans:
 
 Plans:
 - [ ] 02-01: ESP32 firmware — WiFi connection, WSS client with device token auth, ping/pong keepalive, auto-reconnect logic
-- [x] 02-02: ESP32 firmware — relay actuation (SRD-05VDC-SL-C with flyback diode), state reporting via JSON messages
+- [ ] 02-02: ESP32 firmware — relay actuation (SRD-05VDC-SL-C with flyback diode), state reporting via JSON messages
 - [ ] 02-03: Backend WebSocket hub — connection registry, device token validation, message routing, device shadow state
 - [ ] 02-04: Device presence detection — heartbeat monitoring, online/offline status tracking, dashboard status endpoint
 
@@ -102,6 +102,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Foundation & Auth | 4/4 | Complete   | 2026-03-31 |
-| 2. Firmware & Connection | 1/4 | In progress | - |
+| 2. Firmware & Connection | 0/4 | Not started | - |
 | 3. Real-Time Control & Dashboard | 0/4 | Not started | - |
 | 4. Transaction Audit System | 0/3 | Not started | - |
