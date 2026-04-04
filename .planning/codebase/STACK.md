@@ -1,142 +1,217 @@
 # Technology Stack
 
-**Analysis Date:** 2026-04-01
+**Analysis Date:** 2026-04-04
 
-## Languages
+## Overview
 
-**Primary:**
-- **JavaScript (ES2022+)** — Backend server code
-- **Node.js 22.x LTS** — Runtime environment
-
-## Runtime
-
-**Environment:**
-- **Node.js** 22.x LTS — Required by `package.json` engines field (`>=22.0.0`)
-- **Platform:** Render Web Service (free tier)
-
-**Package Manager:**
-- **npm** 10.x+ — Lockfile: `package-lock.json` (auto-generated)
-- Install command: `npm ci --omit=dev` (production build on Render)
-
-## Frameworks
-
-**Core:**
-- **Express** 5.1.0 — HTTP API framework
-  - Rationale: Industry standard, minimal overhead, massive ecosystem. Express 5 is stable and production-ready. Handles REST API routes for device management and authentication.
-  - Alternative rejected: Fastify — faster but adds complexity not needed at this scale; Hono — great for edge but Express has the ecosystem for auth middleware, validation, etc.
-
-- **Mongoose** 8.13.1 — MongoDB ODM
-  - Rationale: Schema validation at the model level prevents bad data. Middleware hooks (`pre('save')`) for `updatedAt` timestamps. Virtuals and getters simplify data transformation. Performance overhead negligible at v1 scale.
-  - Alternative rejected: Raw `mongodb` driver — would require manual validation boilerplate; Prisma — limited MongoDB support compared to PostgreSQL.
-
-**Testing:**
-- **Jest** 29.7.0 — Test runner
-  - Rationale: Zero-config, built-in coverage, `node --experimental-vm-modules` for ES module support
-
-**Build/Dev:**
-- **nodemon** 3.1.9 — Development file watcher
-  - Rationale: Auto-restarts on file changes; only in devDependencies
-
-## Key Dependencies
-
-### Authentication & Security
-
-**bcrypt** 5.1.1 — Password hashing
-- Salt rounds: 12
-- Rationale: Industry standard. Argon2 technically superior but bcrypt has broader ecosystem support.
-- Alternative rejected: Argon2 — better memory hardness but less ecosystem support at this scale.
-
-**jsonwebtoken** 9.0.2 — JWT authentication
-- Used in: `src/utils/jwt.js`
-- Tokens: Access token (15m expiry), Refresh token (7d expiry)
-- Rationale: Standard JWT implementation, lightweight, well-maintained.
-- Alternative rejected: `jose` — supports more runtimes but `jsonwebtoken` is simpler for Express.
-
-### Validation
-
-**zod** 3.24.2 — Runtime validation
-- Used in: All route handlers (`auth.routes.js`, `device.routes.js`)
-- Rationale: Type-safe request validation for HTTP payloads. Catches malformed data before business logic.
-- Alternative rejected: `joi` — class-based, more verbose; `yup` — larger bundle.
-
-### HTTP Utilities
-
-**cors** 2.8.5 — Cross-Origin Resource Sharing
-- Used in: Express server setup
-- Rationale: Enables frontend-backend communication; configured per `FRONTEND_URL` env var.
-
-**cookie-parser** 1.4.7 — Cookie parsing middleware
-- Used in: Express server setup
-- Rationale: Parses `accessToken` and `refreshToken` cookies in auth flows.
-
-### Database
-
-**mongoose** 8.13.1 — MongoDB object modeling (listed above under Frameworks)
-
-## Configuration
-
-**Environment Variables (Render):**
-- `NODE_ENV=production` — Render injects
-- `PORT=3000` — Render injects
-- `MONGODB_URI` — User-provided MongoDB Atlas connection string
-- `JWT_SECRET` — User-provided secret for access tokens
-- `JWT_REFRESH_SECRET` — User-provided secret for refresh tokens
-- `FRONTEND_URL` — CORS origin (empty string = no restrictions)
-
-**Environment Files:**
-- `.env` — Local development (not committed to git)
-- `render.yaml` — Render deployment config
-
-**Project Configuration:**
-- `package.json` with `"type": "module"` — ES modules throughout
-- `jest` config in `package.json` — ES module support via `--experimental-vm-modules`
-
-## Platform Requirements
-
-**Development:**
-- Node.js 22.x+
-- npm 10.x+
-- MongoDB Atlas M0 free tier (or local MongoDB)
-
-**Production:**
-- Render Web Service (free tier)
-- MongoDB Atlas M0 (512MB, auto-scaling)
-
-## What NOT to Use and Why
-
-| Technology | Why Not | What to Use Instead |
-|------------|---------|---------------------|
-| **Socket.io** | ESP32 cannot use Socket.io protocol natively. Would need custom ESP32 client. Overkill for 1 ESP32 + a few browser clients. | Raw `ws` library + native WebSocket |
-| **MQTT** | Requires a separate broker process. Render free tier doesn't support persistent non-HTTP services. | WebSocket on same Express server |
-| **Firebase Realtime Database** | Vendor lock-in, unpredictable pricing. We already use MongoDB Atlas. | MongoDB Atlas with WebSocket |
-| **Mongoose (for ESP32)** | Mongoose is a Node.js ODM — doesn't exist for embedded. | Direct WebSocket messages to backend |
-| **Prisma** | Limited MongoDB support compared to PostgreSQL. | Mongoose or raw `mongodb` driver |
-| **Redux** | Excessive boilerplate for device status + transaction log state. | Zustand |
-| **Docker for backend** | Render handles Node.js build/deploy natively. Docker adds build time and image size. | Native Node.js deployment |
-| **PostgreSQL** | No advantage over MongoDB for our document-based data model. MongoDB Atlas free tier is simpler. | MongoDB Atlas |
-| **Next.js API routes as WebSocket server** | Next.js Edge Runtime doesn't support WebSockets. | Dedicated Express + ws server on Render |
-
-## Project Structure
-
-```
-src/
-├── db/
-│   └── connection.js     # MongoDB connection management
-├── models/
-│   ├── User.js           # User document schema
-│   └── Device.js         # Device document schema
-├── routes/
-│   ├── auth.routes.js    # Auth endpoints (signup, login, logout, refresh)
-│   └── device.routes.js  # Device CRUD endpoints
-├── middleware/
-│   └── auth.middleware.js # requireAuth, optionalAuth
-├── utils/
-│   ├── jwt.js            # Token generation/verification
-│   ├── password.js       # Password hashing/verification
-│   └── deviceToken.js    # Device token generation (UUID v4)
-└── index.js              # Server entry point
-```
+This document describes the actual technology stack implemented in the IoT Device Control Platform codebase.
 
 ---
 
-*Stack analysis: 2026-04-01*
+## 1. ESP32 Firmware Stack
+
+### Core Framework
+| Technology | Version | Purpose | File |
+|------------|---------|---------|------|
+| **arduino-esp32** | ~6.x (via PlatformIO `espressif32`) | Arduino framework on ESP32 | `firmware/platformio.ini` |
+| **ArduinoJson** | ^7.4.0 | JSON serialization/deserialization | `firmware/platformio.ini` |
+| **WebSockets** | ^2.4.1 (links2004/WebSockets) | WebSocket client library | `firmware/platformio.ini` |
+
+### Build System
+- **PlatformIO** - ESP32 build and flash tool
+- Config: `firmware/platformio.ini`
+
+### Key Libraries
+- `WiFiManager` (custom) - WiFi connection management with auto-reconnect
+- `WebSocketsClient` (links2004) - WSS client for ESP32
+
+### Implementation Files
+- `firmware/src/main.cpp` - Entry point, hardware initialization
+- `firmware/src/websocket_client.cpp` - WebSocket client implementation
+- `firmware/src/relay_controller.cpp` - Relay GPIO control
+
+### Deviation from Research
+The ESP32 uses `links2004/WebSockets` library instead of the built-in `esp_websocket_client`. This is because:
+- The Arduino framework wraps ESP-IDF differently
+- The links2004 library provides better Arduino compatibility
+- TLS is disabled (insecure mode) due to cert-bundle API instability
+
+---
+
+## 2. Backend Server Stack
+
+### Runtime & Framework
+| Technology | Version | Purpose | File |
+|------------|---------|---------|------|
+| **Node.js** | >=22.0.0 | JavaScript runtime | `package.json` |
+| **Express** | ^5.1.0 | HTTP REST API | `package.json`, `src/index.js` |
+| **ws** | ^8.19.0 | WebSocket server | `src/ws/hub.js` |
+
+### Data Layer
+| Technology | Version | Purpose | File |
+|------------|---------|---------|------|
+| **Mongoose** | ^8.13.1 | MongoDB ODM with schemas | `src/db/connection.js` |
+| **MongoDB** driver | ^7.1.1 | Database driver (peer dep) | `package.json` |
+
+### Authentication & Security
+| Technology | Version | Purpose | File |
+|------------|---------|---------|------|
+| **bcrypt** | ^5.1.1 | Password hashing | `src/utils/password.js` |
+| **jsonwebtoken** | ^9.0.2 | JWT access/refresh tokens | `src/utils/jwt.js` |
+| **zod** | ^3.24.2 | Request validation | All route files |
+
+### Utilities
+| Technology | Version | Purpose | File |
+|------------|---------|---------|------|
+| **cookie-parser** | ^1.4.7 | Cookie parsing | `src/index.js` |
+| **cors** | ^2.8.5 | CORS middleware | `src/index.js` |
+| **dotenv** | ^16.4.7 | Environment config | `src/index.js` |
+
+### Dev Dependencies
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| **nodemon** | ^3.1.9 | Auto-restart during development |
+| **jest** | ^29.7.0 | Testing framework |
+| **concurrently** | ^9.2.1 | Run backend + frontend simultaneously |
+
+### Entry Point
+- `src/index.js` - Express + ws server with graceful shutdown
+
+---
+
+## 3. Database Stack
+
+### MongoDB Atlas (Free Tier M0)
+| Setting | Value | Source |
+|---------|-------|--------|
+| **Driver** | Mongoose 8.23.0 | `src/db/connection.js` |
+| **API Version** | Stable API v1 | `src/db/connection.js` |
+| **Connection URI** | `MONGODB_URI` env var | `.env.example` |
+
+### Collections
+| Collection | Schema File | Purpose |
+|------------|-------------|---------|
+| `users` | `src/models/User.js` | User accounts (email, passwordHash) |
+| `devices` | `src/models/Device.js` | ESP32 device registry |
+| `transactions` | `src/models/Transaction.js` | Blockchain-style audit log |
+
+### Transaction Hashing
+The `transactions` collection uses SHA-256 hashing for blockchain-style immutability:
+- Each transaction links to `prevHash`
+- Hash computed in Mongoose `pre('validate')` hook
+- `duration` calculated as time since previous transaction
+
+---
+
+## 4. Frontend Web App Stack
+
+### Core Framework
+| Technology | Version | Purpose | File |
+|------------|---------|---------|------|
+| **Next.js** | ^15.0.0 | Full-stack React framework | `frontend/package.json` |
+| **React** | ^19.0.0 | UI library | `frontend/package.json` |
+| **TypeScript** | ^5.7.0 | Type safety | `frontend/tsconfig.json` |
+
+### Styling
+| Technology | Version | Purpose | File |
+|------------|---------|---------|------|
+| **Tailwind CSS** | ^4.0.0 | Utility-first CSS | `frontend/postcss.config.mjs` |
+| **@tailwindcss/postcss** | ^4.0.0 | Tailwind v4 PostCSS plugin | `frontend/postcss.config.mjs` |
+
+### State Management
+| Technology | Version | Purpose | File |
+|------------|---------|---------|------|
+| **zustand** | ^5.0.0 | Lightweight state store | `frontend/src/store/deviceStore.ts` |
+
+### UI Components
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| **lucide-react** | ^0.468.0 | Icon library |
+| **framer-motion** | ^12.38.0 | Animations |
+| **sonner** | ^1.7.0 | Toast notifications |
+| **class-variance-authority** | ^0.7.1 | Component variants |
+| **@radix-ui/react-slot** | ^1.1.1 | Headless UI primitive |
+
+### Dev Dependencies
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| **eslint** + **eslint-config-next** | ^9.0, ^15.0 | Linting |
+| **@types/** packages | ^22, ^19 | TypeScript types |
+
+### Build Configuration
+- `frontend/next.config.ts` - Next.js config with standalone output
+- `frontend/tsconfig.json` - TypeScript with path alias `@/*`
+- `frontend/postcss.config.mjs` - Tailwind v4 CSS-first config
+
+---
+
+## 5. Deployment Configuration
+
+### Render Deployment (`render.yaml`)
+| Setting | Value |
+|---------|-------|
+| **Runtime** | node |
+| **Region** | oregon |
+| **Plan** | free |
+| **Build Command** | `npm ci --omit=dev` |
+| **Start Command** | `node src/index.js` |
+| **Health Check** | GET `/health` |
+
+### Environment Variables
+| Variable | Source | Purpose |
+|----------|--------|---------|
+| `MONGODB_URI` | Render (sync: false) | MongoDB Atlas connection |
+| `JWT_SECRET` | Render (sync: false) | Access token signing |
+| `JWT_REFRESH_SECRET` | Render (sync: false) | Refresh token signing |
+| `PORT` | Render (default: 3000) | HTTP server port |
+| `NODE_ENV` | Render (production) | Runtime environment |
+| `FRONTEND_URL` | Render | CORS origin |
+
+### Frontend Deployment
+- Hosted on **Vercel** (based on `FRONTEND_URL`)
+- Backend URL configured via `NEXT_PUBLIC_BACKEND_URL`
+
+---
+
+## 6. Communication Protocols
+
+### ESP32 ↔ Backend (WebSocket)
+| Aspect | Implementation |
+|--------|-----------------|
+| **Protocol** | WSS (WebSocket Secure) |
+| **Library** | links2004/WebSockets |
+| **Auth** | `Authorization: Bearer <device-token>` header |
+| **Keepalive** | Ping/pong every 25s (ESP32), 30s (server) |
+| **Reconnect** | 5 second interval |
+
+### Frontend ↔ Backend
+| Channel | Protocol | Purpose |
+|---------|----------|---------|
+| **Commands** | HTTPS REST | POST `/api/devices/:id/command` |
+| **Status polling** | HTTPS REST | GET `/api/devices` (every 10s) |
+| **Auth** | HTTPS REST | POST `/api/auth/*` |
+
+---
+
+## 7. Dependencies Comparison: Research vs Implementation
+
+| Category | Research (Planned) | Implementation (Actual) | Status |
+|----------|-------------------|-------------------------|--------|
+| Express | 5.x | 5.2.1 | ✅ Match |
+| ws | 8.x | 8.20.0 | ✅ Match |
+| bcrypt | 5.x | 5.1.1 | ✅ Match |
+| jsonwebtoken | 9.x | 9.0.3 | ✅ Match |
+| zod | 3.x | 3.25.76 | ✅ Match |
+| MongoDB driver | 7.1.x | 7.1.1 | ✅ Match |
+| Mongoose | 8.x (optional) | 8.23.0 | ✅ Added |
+| Next.js | 16.x | 15.0.0 | ⚠️ Lower |
+| React | 19.x | 19.0.0 | ✅ Match |
+| TypeScript | 5.x | 5.7.x | ✅ Match |
+| Tailwind CSS | 4.x | 4.0.0 | ✅ Match |
+| Zustand | 5.x | 5.0.x | ✅ Match |
+| ArduinoJson | 7.x | 7.4.0 | ✅ Match |
+| WebSocket lib | esp_websocket_client (built-in) | links2004/WebSockets 2.4.1 | ⚠️ Changed |
+
+---
+
+*Stack analysis: 2026-04-04*

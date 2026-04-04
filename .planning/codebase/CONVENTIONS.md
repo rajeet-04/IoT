@@ -1,317 +1,299 @@
 # Coding Conventions
 
-**Analysis Date:** 2026-04-01
+**Analysis Date:** 2026-04-04
 
 ## Overview
 
-This codebase is an Express.js backend using ES modules, Mongoose ODM, and Zod validation. The conventions below are derived from actual patterns found in `src/routes/`, `src/models/`, `src/utils/`, and `src/middleware/`.
+The project uses **three separate codebases** with different conventions:
+- **Backend**: Node.js with ES modules, Express, Mongoose
+- **Firmware**: C++ (Arduino framework) for ESP32
+- **Frontend**: TypeScript with Next.js, React, Zustand
 
 ---
 
-## File Structure & Naming
+## Backend Conventions (Node.js/Express)
 
-### Files
-- **Naming:** kebab-case for files (`auth.routes.js`, `deviceToken.js`)
-- **Extension:** `.js` for source, `.test.js` for tests
-- **Route files:** `*.routes.js`
-- **Model files:** PascalCase singular (`User.js`, `Device.js`)
-- **Utility files:** camelCase singular (`jwt.js`, `password.js`, `deviceToken.js`)
-- **Middleware files:** camelCase (`auth.middleware.js`)
+**Location:** `src/`
 
-### Directory Structure
+### File Naming
+
+- **Routes**: `*.routes.js` (e.g., `auth.routes.js`, `device.routes.js`)
+- **Models**: PascalCase singular (e.g., `User.js`, `Device.js`, `Transaction.js`)
+- **Middleware**: `*.middleware.js` (e.g., `auth.middleware.js`)
+- **Utils**: camelCase (e.g., `password.js`, `jwt.js`, `deviceToken.js`)
+- **WebSocket**: camelCase (e.g., `hub.js`, `connectionRegistry.js`, `messageRouter.js`)
+
+### Indentation & Style
+
+```javascript
+// 2-space indentation
+const result = something
+  .chain()
+  .here();
 ```
-src/
-├── db/
-│   └── connection.js          # Singleton DB connection
-├── middleware/
-│   └── auth.middleware.js     # Auth middleware (requireAuth, optionalAuth)
-├── models/
-│   ├── User.js                # Mongoose model
-│   └── Device.js              # Mongoose model
-├── routes/
-│   ├── auth.routes.js         # Auth endpoints
-│   └── device.routes.js       # Device CRUD endpoints
-├── utils/
-│   ├── jwt.js                 # JWT generation/verification
-│   ├── password.js            # Bcrypt hashing
-│   └── deviceToken.js         # Device token generation
-└── index.js                  # App entry point
-```
-
----
-
-## Naming Conventions
-
-### Variables & Functions
-- **Functions:** camelCase (`hashPassword`, `verifyToken`, `generateAccessToken`)
-- **Variables:** camelCase (`passwordHash`, `accessToken`, `deviceToken`)
-- **Constants:** UPPER_SNAKE_CASE (`SALT_ROUNDS` in `src/utils/password.js`)
-- **Private module-level:** underscore prefix (`_connection` in `src/db/connection.js`)
-
-### Mongoose Schemas
-- **Schema names:** camelCase (`userSchema`, `deviceSchema`)
-- **Model name:** PascalCase singular (`User`, `Device`)
-- **Collection field names:** camelCase (`userId`, `deviceId`, `lastSeen`)
-- **Schema type options:** kebab-case in error messages (`'User ID is required'`)
-
-### Routes
-- **HTTP methods:** lowercase (`router.post`, `router.get`, `router.put`, `router.delete`)
-- **Route paths:** kebab-case where multiple words (`/api/devices`)
-- **Route variables:** camelCase (`/:id`)
 
 ### Imports
-- **Import order:**
-  1. Node built-ins (`express`, `crypto`, `node:crypto`)
-  2. External packages (`mongoose`, `zod`, `bcrypt`, `jsonwebtoken`)
-  3. Internal modules (`../models/User`, `../utils/jwt`)
-- **File extensions:** Always include `.js` extension in imports (ES modules)
 
----
+- ES module imports (`import ... from ...`)
+- Relative imports with `.js` extension
+- Path structure: `../models/`, `./utils/`, `@/store/` (frontend)
 
-## Function Patterns
+### Function Patterns
 
-### Async Route Handlers
-All async route handlers use try/catch with `next(err)`:
 ```javascript
+// Async route handlers with try/catch
 router.post('/endpoint', async (req, res, next) => {
   try {
-    // async logic
-    return res.status(201).json({ /* ... */ });
+    const result = await doSomething(req.body);
+    return res.status(200).json({ data: result });
   } catch (err) {
     next(err);
   }
 });
-```
 
-### Middleware Functions
-Two patterns observed:
-
-**Blocking middleware** (requires auth):
-```javascript
-export function requireAuth(req, res, next) {
-  const token = req.cookies?.accessToken;
-  if (!token) {
-    return res.status(401).json({ error: 'Authentication required' });
-  }
-  try {
-    const payload = verifyToken(token);
-    req.userId = payload.userId;
-    next();
-  } catch {
-    return res.status(401).json({ error: 'Invalid or expired token' });
-  }
-}
-```
-
-**Non-blocking middleware** (optional auth):
-```javascript
-export function optionalAuth(req, res, next) {
-  const token = req.cookies?.accessToken;
-  if (!token) {
-    req.userId = null;
-    return next();
-  }
-  try {
-    const payload = verifyToken(token);
-    req.userId = payload.userId;
-  } catch {
-    req.userId = null;
-  }
-  next();
-}
-```
-
-### Singleton Pattern (Database Connection)
-```javascript
-let _connection = null;
-
-export async function connectDB(uri) {
-  if (_connection) {
-    return _connection;
-  }
-  _connection = await mongoose.connect(uri, {
-    serverApi: { version: '1' },
-  });
-  return _connection;
-}
-
-export function getDB() {
-  if (!_connection) {
-    throw new Error('Database not connected — call connectDB() first');
-  }
-  return _connection;
-}
-```
-
----
-
-## Error Handling
-
-### Route-Level Errors
-- Use `try/catch` with `next(err)` for all async operations
-- Return early on validation failures or not-found conditions
-- Never swallow errors without passing to `next(err)`
-
-### Validation Errors (Zod)
-```javascript
-const result = schema.safeParse(req.body);
-if (!result.success) {
-  return res.status(400).json({
-    error: 'Validation failed',
-    details: result.error.errors,
-  });
-}
-```
-
-### Not-Found Pattern
-```javascript
-if (!device) {
-  return res.status(404).json({ error: 'Device not found' });
-}
-```
-
-### Global Error Handler
-Located in `src/index.js`:
-```javascript
-app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err);
-  res.status(500).json({ error: 'Internal server error' });
-});
-```
-
-### Security-Preserving Error Messages
-Auth endpoints return generic messages to prevent enumeration:
-```javascript
-// Login failure - same message for user-not-found and bad password
-return res.status(401).json({ error: 'Invalid email or password' });
-
-// Password reset - always returns 200
-return res.status(200).json({
-  message: 'If an account exists, a reset token has been generated.',
-});
-```
-
----
-
-## Response Patterns
-
-### Success Responses
-```javascript
-// Create (201)
-return res.status(201).json({
-  device: { id: device._id, deviceId: device.deviceId, name: device.name, token },
-});
-
-// List (200)
-return res.status(200).json({
-  devices: devices.map((d) => ({ id: d._id, name: d.name, status: d.status })),
-});
-
-// Delete (200)
-return res.status(200).json({ message: 'Device deleted successfully' });
-```
-
-### Error Responses
-```javascript
-return res.status(404).json({ error: 'Device not found' });
-return res.status(401).json({ error: 'Invalid email or password' });
-return res.status(400).json({
-  error: 'Validation failed',
-  details: result.error.errors,
-});
-```
-
-### Cookie-Based Auth
-```javascript
-function setAuthCookies(res, accessToken, refreshToken) {
-  const isProd = process.env.NODE_ENV === 'production';
-  res.cookie('accessToken', accessToken, {
-    httpOnly: true,
-    secure: isProd,
-    sameSite: 'lax',
-    maxAge: 15 * 60 * 1000, // 15 minutes
-  });
-  // refreshToken cookie with 7 day maxAge
-}
-
-function clearAuthCookies(res) {
-  const isProd = process.env.NODE_ENV === 'production';
-  const opts = { httpOnly: true, secure: isProd, sameSite: 'lax' };
-  res.clearCookie('accessToken', opts);
-  res.clearCookie('refreshToken', opts);
-}
-```
-
----
-
-## Validation Patterns
-
-### Zod Schemas
-Defined at module level (not inside route handlers):
-```javascript
-const signupSchema = z.object({
+// Validation with Zod
+const schema = z.object({
   email: z.string().email('Invalid email format'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
 });
 ```
 
-### Mongoose Schema Validation
-- Required fields use array syntax: `required: [true, 'Field description']`
-- String constraints use `minlength`, `maxlength`, `match`
-- Enums define allowed values: `enum: ['offline', 'online']`
-- Defaults use functions for dynamic values: `default: function () { return ... }`
+### Error Handling
 
----
+- Use `next(err)` to pass errors to Express error handler
+- Global error handler at end of `src/index.js`:
+  ```javascript
+  app.use((err, req, res, next) => {
+    console.error('Unhandled error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  });
+  ```
+- Return appropriate HTTP status codes (400, 401, 404, 500)
 
-## Comments & Documentation
+### Documentation (JSDoc)
 
-### JSDoc Format
-Used for utility functions:
 ```javascript
 /**
  * Hash a plain text password using bcrypt.
  * @param {string} plainText - Password to hash
  * @returns {Promise<string>} Bcrypt hash
  */
-export async function hashPassword(plainText) { ... }
+export async function hashPassword(plainText) {
+  return bcrypt.hash(plainText, SALT_ROUNDS);
+}
 ```
 
-### Inline Comments
-- Used sparingly for non-obvious logic
-- Security notes marked with `v1`, `v2+`:
-```javascript
-// v1: simple validation — token must be non-empty, email must match a user
-// v2+: use token store with expiry
+### Logging
+
+- Console logging with context prefixes
+- Backend: `[WS Hub]`, `[WS Registry]`, `[WS Router]`
+- Error logging with `console.error()`
+- Warn logging with `console.warn()`
+
+---
+
+## Firmware Conventions (ESP32/C++)
+
+**Location:** `firmware/src/`
+
+### File Structure
+
+- Header files: `*.h` (declarations, documentation)
+- Implementation files: `*.cpp`
+- Main entry: `main.cpp`
+
+### Indentation & Style
+
+```cpp
+// 4-space indentation
+void setup() {
+    if (condition) {
+        doSomething();
+    }
+}
+```
+
+### Naming
+
+- Classes: PascalCase (e.g., `WebSocketClient`, `RelayController`)
+- Member variables: `_camelCase` with underscore prefix (e.g., `_gpioPin`, `_state`)
+- Methods: camelCase (e.g., `begin()`, `setState()`)
+- Constants: `SCREAMING_SNAKE_CASE` (e.g., `SALT_ROUNDS`)
+
+### Class Structure
+
+```cpp
+// Header (.h) with pragma once
+#pragma once
+
+#include <Arduino.h>
+#include <ArduinoJson.h>
+
+class RelayController {
+public:
+    RelayController(int gpioPin = 2);
+    void begin();
+    void setOn();
+    void setOff();
+    bool getState() const;
+
+private:
+    int _gpioPin;
+    bool _state;
+};
+```
+
+### Documentation
+
+```cpp
+/**
+ * RelayController - ESP32 Relay Control Module
+ * 
+ * Controls SRD-05VDC-SL-C relay with safe boot state and state reporting.
+ * Includes flyback diode protection wiring diagram.
+ * 
+ * Default Pin: GPIO 2 (D2)
+ * 
+ * Safety Notes:
+ *   - ALWAYS use flyback diode with inductive loads (relays)
+ *   - Use separate 5V supply capable of 1A+ for relay power
+ */
+```
+
+### State Machine Pattern
+
+```cpp
+// Event-based state handling
+void WebSocketClient::handleEvent(WStype_t type, uint8_t* payload, size_t length) {
+    switch (type) {
+        case WStype_CONNECTED:
+            _connected = true;
+            sendHeartbeat();
+            break;
+        case WStype_DISCONNECTED:
+            _connected = false;
+            break;
+        // ...
+    }
+}
 ```
 
 ---
 
-## Architecture Patterns
+## Frontend Conventions (Next.js/TypeScript)
 
-### Layer Separation
-- **Routes:** HTTP handling, input validation, response formatting
-- **Models:** Mongoose schemas, data validation, persistence
-- **Utils:** Pure functions (crypto, hashing, JWT)
-- **Middleware:** Auth logic, request modification
-- **DB:** Connection management, singleton access
+**Location:** `frontend/src/`
 
-### No Business Logic in Routes
-Routes delegate to models and utilities:
-```javascript
-// Route just coordinates
-const passwordHash = await hashPassword(password);
-const user = await User.create({ email, passwordHash });
+### File Naming
+
+- **Pages**: `page.tsx` (e.g., `dashboard/page.tsx`)
+- **Layouts**: `layout.tsx`
+- **Components**: PascalCase (e.g., `DeviceCard.tsx`, `RelayToggle.tsx`)
+- **Utilities**: camelCase (e.g., `auth.ts`, `api.ts`)
+- **Stores**: camelCase (e.g., `deviceStore.ts`)
+
+### Indentation & Style
+
+```typescript
+// 4-space indentation
+const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+};
 ```
 
-### Ownership Checks
-Device routes always filter by `userId`:
-```javascript
-const device = await Device.findOne({
-  _id: req.params.id,
-  userId: req.userId,
-});
+### TypeScript Patterns
+
+```typescript
+// Explicit interfaces
+interface Device {
+    id: string;
+    deviceId: string;
+    name: string;
+    status: 'online' | 'offline';
+    lastSeen: string | null;
+    isConnected: boolean;
+    relayState: boolean;
+}
+
+// Type exports in stores
+export interface DeviceState {
+    devices: Device[];
+    wsStatus: 'connecting' | 'connected' | 'disconnected' | 'reconnecting';
+}
+
+// Zustand store with types
+export const useDeviceStore = create<DeviceState & DeviceActions>((set, get) => ({
+    // ...
+}));
 ```
+
+### Client Components
+
+```typescript
+'use client';
+
+import { useState } from 'react';
+
+export default function MyComponent() {
+    // Client-side logic
+}
+```
+
+### Import Organization
+
+1. External packages (react, next)
+2. Internal imports (lib, store, components)
+3. Path aliases (`@/lib/`, `@/store/`, `@/components/`)
+
+### Tailwind CSS
+
+- Utility classes for styling
+- Custom utilities in `globals.css`:
+  ```css
+  .input { @apply w-full rounded-lg ...; }
+  .btn-primary { @apply w-full bg-gradient-to-r ...; }
+  .glass-panel { @apply bg-white/5 backdrop-blur-xl ...; }
+  ```
 
 ---
 
-*Convention analysis: 2026-04-01*
+## Testing Conventions
+
+**Status:** No test files currently exist in the codebase.
+
+**Framework Configured:** Jest 29.7.0 (in `package.json`)
+
+```json
+"jest": {
+  "testEnvironment": "node",
+  "transform": {}
+}
+```
+
+**Test Command:** `npm test` runs Jest with ES module support
+
+---
+
+## Cross-Cutting Conventions
+
+### Git Workflow
+
+- Use GSD commands (`/gsd:quick`, `/gsd:debug`, `/gsd:execute-phase`)
+- Commit messages should be descriptive
+
+### Environment Variables
+
+- Use `.env` files (never commit actual values)
+- Environment variables accessed via `process.env.*`
+
+### Security
+
+- Passwords hashed with bcrypt (12 salt rounds)
+- JWT tokens with 15-minute expiry for access, 7-day for refresh
+- httpOnly cookies for tokens
+- CORS configured with credentials
+
+---
+
+*Convention analysis: 2026-04-04*

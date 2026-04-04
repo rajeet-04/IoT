@@ -1,162 +1,218 @@
 # Architecture
 
-**Analysis Date:** 2026-04-01
+**Analysis Date:** 2026-04-04
 
 ## Pattern Overview
 
-**Overall:** Monolithic Express.js backend with REST API, serving a separate Next.js frontend and ESP32 firmware clients.
+**Overall:** Three-tier IoT system with real-time WebSocket communication between ESP32 devices and a centralized backend, with a separate Next.js frontend for user interaction.
 
 **Key Characteristics:**
-- Single Express server handles both HTTP REST and WebSocket connections (future)
-- MongoDB/Mongoose provides persistence via Mongoose ODM
-- JWT-based authentication with httpOnly cookie transport
-- Zod for runtime request validation at API boundaries
-- Device registry pattern where ESP32 devices are registered and receive bearer tokens
+- **ESP32 devices** connect via WSS (WebSocket Secure) to backend, using device tokens for authentication
+- **Backend server** (Express + ws) handles both REST API (user auth, device management) and real-time WebSocket (device commands)
+- **Frontend** (Next.js) uses HTTP polling for device state, HTTP API for commands
+- **MongoDB** stores users, devices, and immutable transaction logs
 
 ## Layers
 
-**HTTP/REST Layer:**
-- Location: `src/index.js`
-- Contains: Express app, middleware setup, route registration, error handlers, graceful shutdown
-- Depends on: `express`, `cookie-parser`, `cors`
-- Used by: Frontend (Next.js), ESP32 (future WebSocket upgrade)
+### **ESP32 Firmware Layer**
+- Purpose: Hardware control and cloud connectivity
+- Location: `firmware/src/`
+- Contains: `main.cpp`, `websocket_client.cpp`, `relay_controller.cpp`, `WiFiManager.cpp`
+- Depends on: Arduino framework, WiFi, WebSockets library, ArduinoJson
+- Used by: Physical relay hardware (SRD-05VDC-SL-C)
 
-**Route Layer:**
-- Location: `src/routes/`
-- Contains: `auth.routes.js`, `device.routes.js`
-- Depends on: Models, middleware, utilities (Zod, JWT, bcrypt)
-- Used by: Frontend HTTP clients
+### **Backend Server Layer**
+- Purpose: API gateway, WebSocket hub, business logic
+- Location: `src/`
+- Contains: Express routes, WebSocket hub, Mongoose models, auth middleware
+- Depends on: MongoDB, Express, ws, JWT
+- Used by: ESP32 devices (WebSocket), Frontend (HTTP/WebSocket)
 
-**Middleware Layer:**
-- Location: `src/middleware/auth.middleware.js`
-- Contains: `requireAuth`, `optionalAuth` Express middleware
-- Depends on: `src/utils/jwt.js`
-- Used by: Routes that need authentication
+### **Frontend Web Application Layer**
+- Purpose: User interface for device control and monitoring
+- Location: `frontend/src/`
+- Contains: Next.js App Router pages, Zustand store, API client
+- Depends on: Next.js, React, Zustand
+- Used by: End users via browser
 
-**Model Layer:**
-- Location: `src/models/`
-- Contains: `User.js`, `Device.js` Mongoose schemas
-- Depends on: `mongoose`
-- Used by: Routes for CRUD operations
-
-**Database Layer:**
-- Location: `src/db/connection.js`
-- Contains: `connectDB()` singleton, `getDB()` accessor
-- Depends on: `mongoose`
-- Used by: `src/index.js` at startup
-
-**Utility Layer:**
-- Location: `src/utils/`
-- Contains: `jwt.js` (token generation/verification), `password.js` (bcrypt hashing), `deviceToken.js` (device token generation)
-- Depends on: `jsonwebtoken`, `bcrypt`
-- Used by: Routes, middleware
+### **Database Layer**
+- Purpose: Persistent storage for users, devices, and transaction logs
+- Location: MongoDB Atlas (external)
+- Contains: `users`, `devices`, `transactions` collections
 
 ## Data Flow
 
-**User Authentication (Signup/Login):**
-
-1. Frontend sends `POST /api/auth/signup` or `/api/auth/login` with `{email, password}`
-2. `auth.routes.js` validates with Zod schema
-3. Password hashed via `password.hashPassword()` (bcrypt, 12 rounds)
-4. User document created/fetched via Mongoose `User` model
-5. JWT tokens generated: short-lived access token (15m) + long-lived refresh token (7d)
-6. Tokens set as `httpOnly` cookies via `setAuthCookies()`
-7. Response returned with user JSON (no token in body — cookies only)
-
-**Device Registration:**
-
-1. Authenticated user sends `POST /api/devices` with optional `{name}`
-2. `device.routes.js` calls `requireAuth` middleware → validates JWT cookie → sets `req.userId`
-3. `generateDeviceToken()` creates a unique device token string
-4. `Device` document created with `userId`, `deviceId`, and `name`
-5. Device token returned **once** in response — user must flash it to ESP32
-
-**Device Control (future WebSocket):**
-
-1. ESP32 establishes WSS connection with `Authorization: Bearer <device-token>` header
-2. Server validates device token against `Device.deviceId` field
-3. Bidirectional JSON messages for relay on/off commands
-4. Each action logged to blockchain-style `Transaction` collection
-
-**Request Lifecycle:**
-
+### **Device Registration Flow:**
 ```
-Client Request
-    │
-    ▼
-src/index.js (Express app)
-    │ app.use(express.json())
-    │ app.use(cookieParser())
-    │ app.use(cors())
-    ▼
-Route Handler (auth.routes.js or device.routes.js)
-    │
-    ├── Zod validation (req.body)
-    │
-    ├── requireAuth middleware (device.routes.js only)
-    │   └── verifyToken from jwt.js
-    │
-    ├── Model operation (User/Device via Mongoose)
-    │
-    └── Response (JSON or cookie)
+User → Frontend (/api/devices POST) → Backend → MongoDB
+                                     ↓
+                              Returns device token
+                                     ↓
+User flashes token → ESP32 firmware
 ```
+
+### **Device Connection Flow:**
+```
+ESP32 → WSS /ws (with Bearer token) → Backend Hub
+                                        ↓
+                              Validates token against devices collection
+                                        ↓
+                              Registers connection in ConnectionRegistry
+                                        ↓
+                              Sends 'welcome' message with initial state
+```
+
+### **Command Flow (User → Device):**
+```
+User clicks toggle → Frontend → POST /api/devices/:id/command
+                                          ↓
+                                    Creates Transaction record
+                                    (computes hash chain)
+                                          ↓
+                                    Gets device WebSocket from Registry
+                                          ↓
+                                    Sends command via WebSocket
+                                          ↓
+ESP32 ← WSS message ← Backend Hub ← ← ← ← ←
+    ↓
+Executes relay action
+    ↓
+Sends ack + state_report via WebSocket
+    ↓
+Backend updates device state + broadcasts to subscribed web clients
+```
+
+### **State Management:**
+- **ESP32:** Local relay state variable, synced via WebSocket
+- **Backend:** `Device.relayState` is source of truth, updated on `state_report` messages
+- **Frontend:** Polls `/api/devices` every 10 seconds, optimistic UI updates on command send
+
+## Communication Patterns
+
+### **ESP32 ↔ Backend (WebSocket)**
+- Protocol: WSS (WebSocket Secure)
+- Path: `/ws`
+- Authentication: `Authorization: Bearer <device_token>` header
+- Heartbeat: ESP32 sends `heartbeat` every 30 seconds; server sends ping every 30 seconds
+- Message format: JSON
+
+**Incoming messages from ESP32:**
+- `heartbeat` - Device alive signal with uptime
+- `state_report` - Relay state update
+- `ack` - Command acknowledgment with `commandId`
+
+**Outgoing messages to ESP32:**
+- `welcome` - Initial state on connection
+- `command` - Control commands (turn_on, turn_off, toggle)
+- `server_shutdown` - Graceful shutdown notification
+
+### **Frontend ↔ Backend (HTTP)**
+- Protocol: HTTPS
+- Auth: JWT in `Authorization: Bearer` header or httpOnly cookies
+- Endpoints: `/api/auth/*`, `/api/devices/*`, `/api/transactions/*`
+
+### **Frontend ↔ Backend (WebSocket) - Future**
+Currently frontend uses HTTP polling. WebSocket subscription infrastructure exists (`broadcastToDeviceSubscribers` in `hub.js`) but is not actively used.
 
 ## Key Abstractions
 
-**Authentication:**
-- `src/utils/jwt.js` — Pure JWT operations (sign, verify, decode)
-- `src/middleware/auth.middleware.js` — Express middleware that extracts user from cookies
-- `src/routes/auth.routes.js` — Auth endpoints with Zod validation
+### **ConnectionRegistry** (`src/ws/connectionRegistry.js`)
+- Purpose: Track active device connections in memory
+- Pattern: Singleton Map of deviceId → WebSocket
+- Key methods: `register()`, `unregister()`, `sendCommand()`, `isConnected()`
 
-**Device Management:**
-- `src/models/Device.js` — Mongoose schema for ESP32 devices
-- `src/routes/device.routes.js` — CRUD endpoints with user scoping
-- `src/utils/deviceToken.js` — Unique device token generation
+### **MessageRouter** (`src/ws/messageRouter.js`)
+- Purpose: Parse and dispatch incoming device messages
+- Pattern: Type-based routing switch statement
+- Handles: heartbeat, state_report, ack, error
 
-**Database:**
-- `src/db/connection.js` — Singleton MongoDB connection with caching
+### **DeviceStore** (`frontend/src/store/deviceStore.ts`)
+- Purpose: Frontend state management with Zustand
+- Contains: Device list, pending commands, WebSocket status
+- Pattern: Centralized store with actions
+
+### **Transaction Model** (`src/models/Transaction.js`)
+- Purpose: Blockchain-style immutable audit log
+- Pattern: Hash chain with SHA-256, pre-validate hook computes hash
+- Fields: `prevHash`, `hash`, `action`, `relayState`, `timestamp`, `duration`
 
 ## Entry Points
 
-**Backend Server:**
+### **Backend Server**
 - Location: `src/index.js`
 - Triggers: `node src/index.js` or `npm start`
 - Responsibilities:
-  - Load environment variables (`dotenv`)
-  - Connect to MongoDB (`connectDB`)
-  - Configure Express middleware
-  - Register routes (`/api/auth`, `/api/devices`)
-  - Start HTTP server on `PORT`
-  - Handle graceful shutdown (SIGTERM, SIGINT)
+  - Initialize Express middleware (CORS, JSON, cookies)
+  - Attach route handlers
+  - Start HTTP server on PORT
+  - Attach WebSocket hub to HTTP server
+  - Connect to MongoDB
+
+### **ESP32 Firmware**
+- Location: `firmware/src/main.cpp`
+- Triggers: ESP32 boot / reset
+- Responsibilities:
+  - Initialize relay (safe OFF state)
+  - Connect to WiFi
+  - Establish WebSocket connection
+  - Register message handler for commands
+  - Handle loop (WiFi tick, WebSocket tick)
+
+### **Frontend Next.js App**
+- Location: `frontend/src/app/`
+- Triggers: Browser navigation
+- Responsibilities:
+  - `/` - Landing page
+  - `/login` - Authentication
+  - `/register` - User signup
+  - `/dashboard` - Device management and control
 
 ## Error Handling
 
-**Strategy:** Central error handler middleware + per-route try/catch with `next(err)`
+**Backend:**
+- Express error middleware catches unhandled errors (500 response)
+- WebSocket errors logged and connection cleaned up
+- MongoDB connection errors trigger graceful shutdown
+- Unhandled rejections logged and trigger graceful shutdown
 
-**Patterns:**
-- Route handlers wrap logic in `try/catch` and call `next(err)` on failure
-- Global error handler at `src/index.js` catches all unhandled errors, returns 500 JSON
-- Zod validation failures return 400 with structured error details
-- Authentication failures return 401
-- Resource-not-found returns 404
-- Conflict (duplicate email) returns 409
+**ESP32:**
+- WiFi disconnect triggers auto-reconnect with exponential backoff
+- WebSocket disconnect triggers auto-reconnect (5s interval)
+- JSON parse errors logged, message ignored
+- Unknown message types return error response
 
-**Error Response Shape:**
-```json
-{ "error": "Message" }
-{ "error": "Validation failed", "details": [...] }
-```
+**Frontend:**
+- API errors caught and displayed via toast notifications
+- Device fetch failures logged, stale data retained
+- Network errors show disconnected status
 
-## Cross-Cutting Concerns
+## Security Boundaries and Trust Zones
 
-**Logging:** `console.log`/`console.error` directly — no structured logging library
+### **Trusted Zone (Backend Server)**
+- Accepts connections from ESP32 devices (WSS) and browsers (HTTPS)
+- Validates device tokens against MongoDB
+- Validates JWT tokens for user authentication
+- Owns canonical state for devices and transactions
 
-**Validation:** Zod schemas defined inline in route files, `safeParse()` used for non-throwing validation
+### **Device Zone (ESP32 Firmware)**
+- Authenticates using pre-provisioned device token (UUID v4)
+- Executes relay commands received from server
+- Sends state reports back to server
+- Uses insecure TLS (certificate verification disabled)
 
-**Authentication:** JWT access tokens in httpOnly cookies, refresh tokens for rotation
+### **User Zone (Frontend)**
+- Authenticates using email/password → JWT
+- Can only manage devices belonging to authenticated user
+- Can issue commands to online devices
+- Cannot directly communicate with ESP32 devices
 
-**CORS:** Configured for frontend origin with `credentials: true`
+### **Untrusted Zone (Internet)**
+- All traffic over TLS/WSS
+- CORS configured to allow frontend origin
+- Device tokens are UUIDs (hard to guess)
+- Passwords hashed with bcrypt (12 rounds)
+- JWT tokens short-lived (15 minutes access, 7 days refresh)
 
 ---
 
-*Architecture analysis: 2026-04-01*
+*Architecture analysis: 2026-04-04*

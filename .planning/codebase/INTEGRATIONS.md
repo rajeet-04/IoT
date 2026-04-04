@@ -1,141 +1,264 @@
 # External Integrations
 
-**Analysis Date:** 2026-04-01
+**Analysis Date:** 2026-04-04
 
-## APIs & External Services
+## Overview
 
-### Database
-
-**MongoDB Atlas**
-- **Purpose:** Primary data store for users, devices, and transaction logs
-- **Tier:** M0 (Free tier) — 512MB storage, auto-scaling
-- **Driver:** `mongoose` 8.13.1 (Node.js ODM)
-- **Connection:** `MONGODB_URI` environment variable
-- **Stable API:** Enabled via `serverApi: { version: '1' }` in connection options
-
-**Collections:**
-| Collection | Purpose | Key Fields |
-|------------|---------|------------|
-| `users` | User accounts | `_id`, `email`, `passwordHash`, `createdAt` |
-| `devices` | ESP32 device registry | `_id`, `userId`, `deviceId`, `name`, `status`, `lastSeen` |
-
-**Connection Pattern:**
-- Single shared `mongoose` connection cached in `src/db/connection.js`
-- Connection event listeners for error and disconnect logging
-- Stable API version ensures compatibility with future Atlas upgrades
-
-### Hosting & Backend
-
-**Render Web Service**
-- **Purpose:** Backend server hosting
-- **Runtime:** Node.js 22.x
-- **Plan:** Free tier
-- **Region:** Oregon
-- **Config file:** `render.yaml`
-
-**Render Settings:**
-| Setting | Value |
-|---------|-------|
-| `buildCommand` | `npm ci --omit=dev` |
-| `startCommand` | `node src/index.js` |
-| `healthCheckPath` | `/health` |
-| `NODE_ENV` | `production` |
-| `PORT` | `3000` |
-
-**WebSocket Support (Render Free Tier):**
-- WebSockets are fully supported on free tier
-- Services stay active while receiving WebSocket messages
-- No maximum connection duration
-- No hard limit on concurrent connections (constrained by instance resources)
-- Clients must implement reconnection with exponential backoff
-- Server implements ping/pong heartbeat
-
-### Authentication & Identity
-
-**JWT (jsonwebtoken 9.0.2)**
-- **Implementation:** Custom utils in `src/utils/jwt.js`
-- **Access Token:** 15-minute expiry, stored in `accessToken` httpOnly cookie
-- **Refresh Token:** 7-day expiry, stored in `refreshToken` httpOnly cookie
-- **Algorithm:** HS256 (default)
-- **Secrets:** `JWT_SECRET` and `JWT_REFRESH_SECRET` env vars (user-provided on Render)
-
-**Password Hashing (bcrypt 5.1.1)**
-- **Salt rounds:** 12
-- **Usage:** `hashPassword()` and `verifyPassword()` in `src/utils/password.js`
-
-### Client Communication
-
-**ESP32 ↔ Backend Communication**
-| Aspect | Choice | Implementation |
-|--------|--------|----------------|
-| **Protocol** | WebSocket Secure (WSS) | Native ESP32 `esp_websocket_client` |
-| **Message format** | JSON | Parsed via ArduinoJson |
-| **Authentication** | Device token in connection headers | Generated as UUID v4 via `generateDeviceToken()` |
-| **Keepalive** | Ping/pong | ESP32 client ping interval + server-side `ws.ping()` |
-| **Reconnect** | Auto-reconnect with backoff | ESP32 client `reconnect_timeout_ms` config |
-
-**Device Token Generation:**
-- Method: `crypto.randomUUID()` (Node.js built-in)
-- Format: UUID v4 string
-- Returned once at device registration, user flashes to ESP32
-
-### CORS Configuration
-
-**cors** 2.8.5
-- Origin: `FRONTEND_URL` environment variable
-- Empty string = no CORS restrictions
-- Credentials: Supported via `accessToken` and `refreshToken` httpOnly cookies
-
-## Environment Configuration
-
-### Required Environment Variables
-
-| Variable | Purpose | Where Set |
-|----------|---------|-----------|
-| `MONGODB_URI` | MongoDB Atlas connection string | Render (user-provided) |
-| `JWT_SECRET` | Access token signing secret | Render (user-provided) |
-| `JWT_REFRESH_SECRET` | Refresh token signing secret | Render (user-provided) |
-| `FRONTEND_URL` | CORS origin | Render (empty = open) |
-| `NODE_ENV` | Runtime environment | Render auto-set to `production` |
-| `PORT` | Server port | Render auto-set to `3000` |
-
-### Secrets Location
-
-- **Render:** Environment variables panel (not committed to git)
-- **Local development:** `.env` file (in `.gitignore`)
-
-## Deployment Pipeline
-
-### Render Deployment Flow
-
-1. **Build:** `npm ci --omit=dev` installs production dependencies
-2. **Start:** `node src/index.js` launches Express server
-3. **Health check:** `GET /health` endpoint (handled by Express)
-4. **WebSocket:** Same server on port 3000 (Render handles TLS termination)
-
-### Environment Variable Sync
-
-| Variable | Sync Enabled | Notes |
-|----------|--------------|-------|
-| `MONGODB_URI` | No | User provides after creating Atlas cluster |
-| `JWT_SECRET` | No | User generates secure random string |
-| `JWT_REFRESH_SECRET` | No | User generates secure random string |
-| `FRONTEND_URL` | Yes | Empty string initially |
-| `NODE_ENV` | Yes | Auto-set to `production` |
-| `PORT` | Yes | Auto-set to `3000` |
-
-## What NOT to Use
-
-| Integration | Why Not | Alternative |
-|-------------|---------|-------------|
-| **MQTT Broker (Mosquitto, etc.)** | Requires persistent non-HTTP service — not supported on Render free tier. Adds infrastructure complexity. | WebSocket on same Express server |
-| **Firebase Realtime Database** | Vendor lock-in, unpredictable pricing, already using MongoDB Atlas. | MongoDB Atlas with WebSocket for real-time |
-| **Socket.io** | ESP32 cannot use Socket.io protocol. Would need custom client or HTTP fallback. | Native WebSocket via `esp_websocket_client` |
-| **PostgreSQL** | No advantage for document-based data model. MongoDB Atlas free tier simpler. | MongoDB Atlas |
-| **Redis** | Adds cost and complexity. JWT refresh tokens in httpOnly cookies sufficient. | Cookie-based refresh tokens |
-| **Docker** | Render handles Node.js natively. Docker adds build time. | Native Node.js deployment |
-| **Separate Auth Service** | Overkill for this scale. JWT in cookies sufficient. | Same Express server |
+This document describes all external services, APIs, and integrations used by the IoT Device Control Platform.
 
 ---
 
-*Integration audit: 2026-04-01*
+## 1. Database
+
+### MongoDB Atlas
+| Setting | Value |
+|---------|-------|
+| **Provider** | MongoDB Atlas |
+| **Tier** | M0 (Free) |
+| **Connection** | `MONGODB_URI` environment variable |
+| **Client** | Mongoose ODM |
+| **API Version** | Stable API v1 |
+
+### Connection Configuration
+```javascript
+// src/db/connection.js
+await mongoose.connect(uri, {
+  serverApi: { version: '1' },
+});
+```
+
+### Collections
+- `users` - User accounts
+- `devices` - ESP32 device registry
+- `transactions` - Blockchain-style audit log
+
+---
+
+## 2. Authentication & Identity
+
+### JWT Authentication
+| Token | Expiry | Secret Env Var |
+|-------|--------|----------------|
+| Access Token | 15 minutes | `JWT_SECRET` |
+| Refresh Token | 7 days | `JWT_REFRESH_SECRET` |
+
+### Implementation
+- Tokens signed with `jsonwebtoken` library
+- Stored in httpOnly cookies (same-domain) + localStorage (cross-origin)
+- Refresh token rotation on each refresh
+
+### User Authentication Endpoints
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/auth/signup` | POST | Register new user |
+| `/api/auth/login` | POST | Authenticate user |
+| `/api/auth/logout` | POST | Clear cookies |
+| `/api/auth/me` | GET | Get current user |
+| `/api/auth/refresh` | POST | Refresh access token |
+| `/api/auth/forgot-password` | POST | Generate reset token (v1: console log) |
+| `/api/auth/reset-password` | POST | Reset password |
+
+---
+
+## 3. ESP32 Device Communication
+
+### WebSocket Connection
+| Setting | Value |
+|---------|-------|
+| **Protocol** | WSS (WebSocket Secure) |
+| **Port** | 443 |
+| **Path** | `/ws` |
+| **Auth** | Bearer token in `Authorization` header |
+
+### Device Token Authentication
+- Token generated on device registration (`src/utils/deviceToken.js`)
+- Stored in MongoDB `devices.deviceId` field
+- Sent as `Authorization: Bearer <token>` during WebSocket handshake
+- Server validates against `Device.findOne({ deviceId: token })`
+
+### Message Protocol (JSON)
+
+#### ESP32 → Server
+```json
+{ "type": "heartbeat", "deviceId": "...", "uptime": 12345 }
+{ "type": "state_report", "relay": 1, "relayState": true, "deviceId": "...", "uptime": 12345 }
+{ "type": "ack", "commandId": "cmd_...", "status": "success", "relayState": 1 }
+```
+
+#### Server → ESP32
+```json
+{ "type": "command", "action": "turn_on", "commandId": "cmd_...", "timestamp": "..." }
+{ "type": "command", "action": "set_relay", "state": 1, "commandId": "..." }
+{ "type": "welcome", "deviceId": "...", "relayState": 0, "timestamp": "..." }
+```
+
+---
+
+## 4. Frontend → Backend API
+
+### Base URL Configuration
+```typescript
+// frontend/src/lib/api.ts
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:3000';
+```
+
+### REST Endpoints Used by Frontend
+
+#### Authentication
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/auth/signup` | POST | Register |
+| `/api/auth/login` | POST | Login |
+| `/api/auth/logout` | POST | Logout |
+| `/api/auth/me` | GET | Get current user |
+
+#### Devices
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/devices` | GET | List user's devices |
+| `/api/devices` | POST | Register new device |
+| `/api/devices/:id` | PUT | Update device name |
+| `/api/devices/:id` | DELETE | Delete device |
+| `/api/devices/:id/command` | POST | Send command to device |
+
+#### Transactions
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/transactions` | GET | List transaction history |
+
+### HTTP Polling Strategy
+The frontend uses HTTP polling (not WebSocket) for device state:
+- Poll `/api/devices` every 10 seconds
+- Commands sent via POST `/api/devices/:id/command`
+
+---
+
+## 5. Deployment Integrations
+
+### Render (Backend)
+| Service | Setting | Value |
+|---------|---------|-------|
+| **Hosting** | Render Web Service | Free tier |
+| **Region** | Oregon | - |
+| **Runtime** | Node.js 22.x | - |
+| **Health Check** | GET `/health` | - |
+
+### Vercel (Frontend)
+- Frontend hosted at: `https://io-t-beige.vercel.app`
+- Configured in `render.yaml` as `FRONTEND_URL`
+
+### Environment Variables on Render
+```yaml
+# render.yaml
+envVars:
+  - key: MONGODB_URI
+    sync: false  # Set via Render dashboard
+  - key: JWT_SECRET
+    sync: false
+  - key: JWT_REFRESH_SECRET
+    sync: false
+  - key: FRONTEND_URL
+    value: "https://io-t-beige.vercel.app"
+```
+
+---
+
+## 6. Device Token Generation
+
+### Implementation
+```javascript
+// src/utils/deviceToken.js
+import crypto from 'node:crypto';
+
+export function generateDeviceToken() {
+  return crypto.randomUUID();
+}
+```
+
+### Token Flow
+1. User registers device via `POST /api/devices`
+2. Server generates UUID via `crypto.randomUUID()`
+3. Token returned ONCE to user
+4. User flashes token to ESP32 via `platformio.ini` build flag
+5. ESP32 uses token for WebSocket authentication
+
+---
+
+## 7. Security Considerations
+
+### Implemented
+| Security Measure | Implementation |
+|-------------------|----------------|
+| Password hashing | bcrypt (salt rounds handled by library) |
+| JWT access tokens | 15-minute expiry, signed with `JWT_SECRET` |
+| JWT refresh tokens | 7-day expiry, signed with `JWT_REFRESH_SECRET` |
+| httpOnly cookies | Same-domain auth (production) |
+| CORS | Configured with credentials support |
+| Device token auth | Bearer token validation on WebSocket |
+
+### Missing (v2+)
+| Security Gap | Current State | Recommended |
+|--------------|---------------|-------------|
+| Password reset email | Console log only | Implement email service (SendGrid, etc.) |
+| Rate limiting | None | Add express-rate-limit |
+| Device token rotation | None | Allow token regeneration |
+| 2FA | None | Add TOTP via speakeasy |
+
+---
+
+## 8. Network Configuration
+
+### Backend Server
+- **HTTP**: Port 3000 (or `PORT` env var)
+- **WebSocket**: `/ws` path on same port
+- **Health Check**: GET `/health`
+
+### ESP32 Device
+- **WiFi**: Configured via build flags
+- **Backend URL**: Configured via `BACKEND_URL` build flag
+- **TLS**: Insecure mode (no CA verification)
+
+### Frontend
+- **Backend URL**: `NEXT_PUBLIC_BACKEND_URL` env var
+- **WebSocket URL**: Derived from backend URL (http→ws)
+
+---
+
+## 9. Environment Configuration Files
+
+### Backend (`.env.example`)
+```
+MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/iot-control?retryWrites=true&w=majority
+JWT_SECRET=change-me-to-random-string
+JWT_REFRESH_SECRET=change-me-to-random-string-too
+PORT=3000
+NODE_ENV=development
+FRONTEND_URL=http://localhost:3001
+```
+
+### ESP32 (`platformio.ini`)
+```
+build_flags =
+    -DWIFI_SSID='"SSID"'
+    -DWIFI_PASSWORD='"password"'
+    -DBACKEND_URL='"backend.example.com"'
+    -DDEVICE_TOKEN='"uuid-token"'
+```
+
+### Frontend
+- `NEXT_PUBLIC_BACKEND_URL` - Set during deployment (Vercel dashboard)
+
+---
+
+## 10. External Service Dependencies Summary
+
+| Service | Type | Critical | Fallback |
+|---------|------|----------|----------|
+| MongoDB Atlas | Database | Yes | None (app fails) |
+| Render | Backend hosting | Yes | None |
+| Vercel | Frontend hosting | No | Can use Render static |
+| WiFi Internet | Device connectivity | Yes | Device offline |
+
+---
+
+*Integration audit: 2026-04-04*

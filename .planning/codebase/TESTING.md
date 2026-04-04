@@ -1,276 +1,447 @@
 # Testing Patterns
 
-**Analysis Date:** 2026-04-01
+**Analysis Date:** 2026-04-04
 
-## Test Framework
+## Test Framework Status
 
-**Runner:** Jest 29.7.0
-- Configured in `package.json` under `jest` key
-- Run command: `npm test` (executes `node --experimental-vm-modules node_modules/jest/bin/jest.js`)
-- Uses `--experimental-vm-modules` flag for ES module support
+**Current State:** No test files exist in the codebase.
 
-**Assertion:** Jest built-in assertions (`expect`)
-
-**Environment:** Node.js (configured via `"testEnvironment": "node"`)
-
-**No transform:** `"transform": {}` — Jest does not transform files (relies on Node.js native ES module handling)
+Jest is configured in `package.json` but no tests have been written yet.
 
 ---
 
-## Current Test Status
+## Framework Configuration
 
-**No test files exist in the codebase.**
+### Backend (Jest)
 
-The `tests/` directory does not exist, and no `*.test.js` or `*.spec.js` files were found anywhere in the project.
+**Location:** `package.json`
 
-Jest is installed as a dev dependency and configured in `package.json`, but no tests have been written yet.
-
----
-
-## Test Configuration
-
-### package.json Configuration
 ```json
 {
-  "scripts": {
-    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
-  },
   "jest": {
     "testEnvironment": "node",
     "transform": {}
+  },
+  "scripts": {
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
   }
 }
 ```
 
-### Key Configuration Notes
-- **`testEnvironment: "node"`** — Tests run in Node.js environment (not JSDOM)
-- **`transform: {}`** — No Babel/transpilation; relies on Node.js 22's native ES module support
-- **ES Modules** — Requires `--experimental-vm-modules` flag when running Jest
+**Key Details:**
+- ES modules support via `--experimental-vm-modules` flag
+- Node.js environment for backend tests
+- No transform needed (native ES modules)
+
+### Run Commands
+
+```bash
+npm test              # Run all tests
+npm run server        # Start backend with nodemon
+npm run client        # Start frontend dev server
+npm run dev           # Run both concurrently
+```
 
 ---
 
-## Recommended Test Structure
+## Test File Organization
 
-Based on codebase conventions, tests should follow this structure:
+**Expected Pattern (not yet implemented):**
 
-### Location
-- Unit tests: `tests/unit/` or co-located `*.test.js` next to source files
-- Integration tests: `tests/integration/`
+```
+R:\Code\IoT\
+├── src\
+│   ├── __tests__\           # Unit tests
+│   │   ├── routes\
+│   │   │   ├── auth.routes.test.js
+│   │   │   ├── device.routes.test.js
+│   │   │   └── transaction.routes.test.js
+│   │   ├── utils\
+│   │   │   ├── password.test.js
+│   │   │   ├── jwt.test.js
+│   │   │   └── deviceToken.test.js
+│   │   ├── models\
+│   │   │   ├── User.test.js
+│   │   │   ├── Device.test.js
+│   │   │   └── Transaction.test.js
+│   │   └── ws\
+│   │       ├── hub.test.js
+│   │       ├── connectionRegistry.test.js
+│   │       └── messageRouter.test.js
+│   └── setup\
+│       └── jest.setup.js
+└── frontend\
+    ├── src\
+    │   └── __tests__\       # Frontend tests (not configured)
+    │       ├── components\
+    │       └── lib\
+    └── jest.config.js
+```
 
-### Naming
-- Test files: `*.test.js` (e.g., `auth.routes.test.js`)
-- Test database: Separate MongoDB instance or mock
+---
 
-### Example Test Structure (for future implementation)
+## Recommended Test Patterns
 
-**Route tests** (`tests/routes/auth.routes.test.js`):
+### Backend Route Tests
+
 ```javascript
-import { jest } from '@jest/globals';
+// src/__tests__/routes/auth.routes.test.js
+import request from 'supertest';
+import express from 'express';
+import authRoutes from '../../routes/auth.routes.js';
+
+const app = express();
+app.use(express.json());
+app.use('/api/auth', authRoutes);
 
 describe('POST /api/auth/signup', () => {
-  it('should return 201 on valid signup', async () => {
-    // Test implementation
+  it('should create a new user with valid credentials', async () => {
+    const res = await request(app)
+      .post('/api/auth/signup')
+      .send({ email: 'test@example.com', password: 'password123' });
+    
+    expect(res.status).toBe(201);
+    expect(res.body.user).toBeDefined();
+    expect(res.body.accessToken).toBeDefined();
   });
 
-  it('should return 400 on invalid email', async () => {
-    // Test implementation
+  it('should reject duplicate email', async () => {
+    // Setup: create user first
+    await request(app)
+      .post('/api/auth/signup')
+      .send({ email: 'test@example.com', password: 'password123' });
+
+    // Test: try to create same user
+    const res = await request(app)
+      .post('/api/auth/signup')
+      .send({ email: 'test@example.com', password: 'password123' });
+    
+    expect(res.status).toBe(409);
   });
 
-  it('should return 409 if email already exists', async () => {
-    // Test implementation
-  });
-});
-```
-
-**Utility tests** (`tests/utils/password.test.js`):
-```javascript
-import { hashPassword, verifyPassword } from '../../src/utils/password.js';
-
-describe('hashPassword', () => {
-  it('should hash a password', async () => {
-    const hash = await hashPassword('testPassword123');
-    expect(hash).not.toBe('testPassword123');
-    expect(hash.length).toBeGreaterThan(0);
+  it('should validate email format', async () => {
+    const res = await request(app)
+      .post('/api/auth/signup')
+      .send({ email: 'invalid-email', password: 'password123' });
+    
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Validation failed');
   });
 
-  it('should produce different hashes for same password', async () => {
-    const hash1 = await hashPassword('testPassword123');
-    const hash2 = await hashPassword('testPassword123');
-    expect(hash1).not.toBe(hash2);
-  });
-});
-
-describe('verifyPassword', () => {
-  it('should return true for correct password', async () => {
-    const hash = await hashPassword('testPassword123');
-    const result = await verifyPassword('testPassword123', hash);
-    expect(result).toBe(true);
-  });
-
-  it('should return false for incorrect password', async () => {
-    const hash = await hashPassword('testPassword123');
-    const result = await verifyPassword('wrongPassword', hash);
-    expect(result).toBe(false);
+  it('should reject short passwords', async () => {
+    const res = await request(app)
+      .post('/api/auth/signup')
+      .send({ email: 'test@example.com', password: 'short' });
+    
+    expect(res.status).toBe(400);
   });
 });
 ```
 
-**Middleware tests** (`tests/middleware/auth.middleware.test.js`):
+### Utility Function Tests
+
 ```javascript
-import { jest } from '@jest/globals';
+// src/__tests__/utils/password.test.js
+import { hashPassword, verifyPassword } from '../../utils/password.js';
 
-describe('requireAuth', () => {
-  it('should return 401 if no token', () => {
-    const req = { cookies: {} };
-    const res = {
-      status: jest.fn().mockReturnThis(),
-      json: jest.fn(),
-    };
-    const next = jest.fn();
+describe('password utilities', () => {
+  describe('hashPassword', () => {
+    it('should hash a password', async () => {
+      const hash = await hashPassword('testPassword123');
+      expect(hash).toBeDefined();
+      expect(hash).not.toBe('testPassword123');
+      expect(hash.length).toBe(60); // bcrypt hash length
+    });
 
-    requireAuth(req, res, next);
-    expect(res.status).toHaveBeenCalledWith(401);
-    expect(next).not.toHaveBeenCalled();
+    it('should generate different hashes for same password', async () => {
+      const hash1 = await hashPassword('testPassword123');
+      const hash2 = await hashPassword('testPassword123');
+      expect(hash1).not.toBe(hash2);
+    });
   });
 
-  it('should call next() with valid token', () => {
-    // Test implementation
+  describe('verifyPassword', () => {
+    it('should verify correct password', async () => {
+      const hash = await hashPassword('testPassword123');
+      const isValid = await verifyPassword('testPassword123', hash);
+      expect(isValid).toBe(true);
+    });
+
+    it('should reject incorrect password', async () => {
+      const hash = await hashPassword('testPassword123');
+      const isValid = await verifyPassword('wrongPassword', hash);
+      expect(isValid).toBe(false);
+    });
   });
 });
 ```
 
-**Model tests** (`tests/models/user.test.js`):
+### Model Tests
+
 ```javascript
-import { jest } from '@jest/globals';
-
-describe('User model', () => {
-  it('should hash password before save', async () => {
-    // Requires MongoDB memory server or mock
-  });
-});
-```
-
----
-
-## Mocking Strategy
-
-### What to Mock
-- **Database (Mongoose):** Use `mongodb-memory-server` or mock Mongoose methods
-- **JWT verification:** Mock `jwt.verify()` in unit tests
-- **bcrypt:** Already async, may want to mock for unit tests
-
-### What NOT to Mock
-- **Zod validation:** Simple enough to test with real data
-- **Utility functions:** Test with real implementations (e.g., `hashPassword`, `generateDeviceToken`)
-
-### MongoDB Mocking
-```javascript
+// src/__tests__/models/Device.test.js
 import mongoose from 'mongoose';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import Device from '../../models/Device.js';
 
-let mongoServer;
+describe('Device model', () => {
+  beforeAll(async () => {
+    await mongoose.connect(process.env.MONGODB_URI_TEST);
+  });
 
-beforeAll(async () => {
-  mongoServer = await MongoMemoryServer.create();
-  const uri = mongoServer.getUri();
-  await mongoose.connect(uri);
+  afterAll(async () => {
+    await mongoose.connection.close();
+  });
+
+  afterEach(async () => {
+    await Device.deleteMany({});
+  });
+
+  it('should create a device with required fields', async () => {
+    const deviceData = {
+      userId: new mongoose.Types.ObjectId(),
+      deviceId: 'test-device-123',
+    };
+    
+    const device = await Device.create(deviceData);
+    
+    expect(device._id).toBeDefined();
+    expect(device.deviceId).toBe('test-device-123');
+    expect(device.status).toBe('offline');
+    expect(device.relayState).toBe(false);
+  });
+
+  it('should auto-generate name if not provided', async () => {
+    const device = await Device.create({
+      userId: new mongoose.Types.ObjectId(),
+      deviceId: 'abc12345',
+    });
+    
+    expect(device.name).toBe('Device-abc12345');
+  });
+
+  it('should validate status enum', async () => {
+    const device = new Device({
+      userId: new mongoose.Types.ObjectId(),
+      deviceId: 'test-device',
+      status: 'invalid_status',
+    });
+    
+    await expect(device.save()).rejects.toThrow();
+  });
 });
-
-afterAll(async () => {
-  await mongoose.disconnect();
-  await mongoServer.stop();
-});
 ```
 
----
+### WebSocket Tests
 
-## Running Tests
-
-```bash
-# Run all tests
-npm test
-
-# Run with coverage (if configured)
-npm test -- --coverage
-
-# Run specific test file
-npm test -- tests/routes/auth.routes.test.js
-
-# Watch mode (if enabled)
-npm test -- --watch
-```
-
----
-
-## Coverage Requirements
-
-**No coverage requirements currently enforced.**
-
-To add coverage reporting, add to `jest` config in `package.json`:
-```json
-{
-  "jest": {
-    "collectCoverageFrom": [
-      "src/**/*.js",
-      "!src/index.js"
-    ],
-    "coverageThreshold": {
-      "global": {
-        "branches": 70,
-        "functions": 70,
-        "lines": 70,
-        "statements": 70
-      }
-    }
-  }
-}
-```
-
----
-
-## Test Types Recommended
-
-### Unit Tests
-- **Utils:** `password.js`, `jwt.js`, `deviceToken.js`
-- **Middleware:** `auth.middleware.js`
-- **Zod schemas:** Validation logic
-
-### Integration Tests
-- **Routes:** Full request/response with test database
-- **Auth flow:** Signup → login → access protected route
-- **Device CRUD:** Create device → list → update → delete
-
-### Priority Order
-1. **Auth utilities** (`password.js`, `jwt.js`) — Critical for security
-2. **Auth middleware** — Core security boundary
-3. **Route handlers** — HTTP contract
-4. **Models** — Data integrity
-
----
-
-## Jest Configuration for ES Modules
-
-The project uses ES modules (`"type": "module"` in `package.json`). Jest requires special handling:
-
-### Required: experimental-vm-modules
-```bash
-node --experimental-vm-modules node_modules/jest/bin/jest.js
-```
-
-This is already configured in `package.json` scripts.
-
-### jest.config.js Alternative
-Create `jest.config.js` for cleaner configuration:
 ```javascript
-export default {
-  testEnvironment: 'node',
-  transform: {},
-  testMatch: ['**/tests/**/*.test.js'],
-  moduleFileExtensions: ['js'],
-  verbose: true,
-};
+// src/__tests__/ws/hub.test.js
+import { WebSocketServer } from 'ws';
+
+describe('WebSocket Hub', () => {
+  let wss;
+  let server;
+
+  beforeAll((done) => {
+    server = createServer();
+    wss = new WebSocketServer({ server, path: '/ws' });
+    server.listen(3001, done);
+  });
+
+  afterAll((done) => {
+    wss.close();
+    server.close(done);
+  });
+
+  it('should accept connections with valid token', (done) => {
+    const ws = new WebSocket('ws://localhost:3001/ws', {
+      headers: { Authorization: `Bearer valid-device-token` },
+    });
+
+    ws.on('open', () => {
+      expect(ws.readyState).toBe(WebSocket.OPEN);
+      ws.close();
+      done();
+    });
+  });
+
+  it('should reject connections without auth header', (done) => {
+    const ws = new WebSocket('ws://localhost:3001/ws');
+
+    ws.on('close', (code) => {
+      expect(code).toBe(4001); // Unauthorized
+      done();
+    });
+  });
+});
+```
+
+### Frontend Component Tests
+
+```typescript
+// frontend/src/__tests__/components/RelayToggle.test.tsx
+import { render, screen, fireEvent } from '@testing-library/react';
+import RelayToggle from '@/components/dashboard/relay-toggle';
+
+describe('RelayToggle', () => {
+  const defaultProps = {
+    deviceId: 'test-device',
+    currentState: false,
+    isOnline: true,
+    isConnected: true,
+    onToggle: jest.fn(),
+  };
+
+  it('should render OFF state correctly', () => {
+    render(<RelayToggle {...defaultProps} />);
+    expect(screen.getByText('OFF')).toBeInTheDocument();
+  });
+
+  it('should render ON state correctly', () => {
+    render(<RelayToggle {...defaultProps} currentState={true} />);
+    expect(screen.getByText('ON')).toBeInTheDocument();
+  });
+
+  it('should call onToggle with new state on click', () => {
+    const onToggle = jest.fn();
+    render(<RelayToggle {...defaultProps} onToggle={onToggle} />);
+    
+    fireEvent.click(screen.getByRole('button'));
+    
+    expect(onToggle).toHaveBeenCalledWith('test-device', true);
+  });
+
+  it('should be disabled when offline', () => {
+    render(<RelayToggle {...defaultProps} isOnline={false} />);
+    
+    const button = screen.getByRole('button');
+    expect(button).toBeDisabled();
+  });
+});
+```
+
+### Store Tests (Zustand)
+
+```typescript
+// frontend/src/__tests__/store/deviceStore.test.ts
+import { renderHook, act } from '@testing-library/react';
+import { useDeviceStore } from '@/store/deviceStore';
+
+describe('deviceStore', () => {
+  beforeEach(() => {
+    // Reset store before each test
+    useDeviceStore.setState({
+      devices: [],
+      wsStatus: 'disconnected',
+    });
+  });
+
+  it('should initialize with empty devices', () => {
+    const { result } = renderHook(() => useDeviceStore());
+    expect(result.current.devices).toEqual([]);
+  });
+
+  it('should update device state', async () => {
+    const { result } = renderHook(() => useDeviceStore());
+    
+    act(() => {
+      result.current.updateDevice('device-1', { relayState: true });
+    });
+    
+    expect(result.current.devices[0]?.relayState).toBe(true);
+  });
+});
 ```
 
 ---
 
-*Testing analysis: 2026-04-01*
+## Testing Recommendations
+
+### Immediate Needs
+
+1. **Backend Route Tests** - Critical for auth and device endpoints
+2. **JWT/Password Utility Tests** - Security-critical code
+3. **Zod Validation Tests** - Ensure schemas work correctly
+
+### Coverage Targets
+
+| Component | Target |
+|-----------|--------|
+| Routes | 90% |
+| Utilities | 100% |
+| Models | 80% |
+| WebSocket | 70% |
+| Frontend | 60% |
+
+### Testing Dependencies to Add
+
+```bash
+# Backend
+npm install --save-dev supertest   # HTTP assertion
+npm install --save-dev mongodb-memory-server  # In-memory DB for tests
+
+# Frontend
+npm install --save-dev @testing-library/react @testing-library/jest-dom
+npm install --save-dev jest-environment-jsdom
+```
+
+### Mock Patterns
+
+```javascript
+// Mock MongoDB
+jest.mock('../../db/connection.js', () => ({
+  connectDB: jest.fn(),
+  getDB: jest.fn(),
+}));
+
+// Mock WebSocket
+jest.mock('../../ws/hub.js', () => ({
+  attachWebSocketHub: jest.fn(),
+  getRegistry: jest.fn(() => ({
+    isConnected: jest.fn(),
+    sendCommand: jest.fn(),
+  })),
+}));
+```
+
+---
+
+## CI/CD Testing
+
+**Current:** No CI configured.
+
+### Recommended GitHub Actions
+
+```yaml
+# .github/workflows/test.yml
+name: Test
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      mongodb:
+        image: mongo:7
+        ports:
+          - 27017:27017
+    
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      
+      - run: npm ci
+      - run: npm test -- --coverage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+```
+
+---
+
+*Testing analysis: 2026-04-04*

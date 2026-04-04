@@ -1,313 +1,334 @@
 # Codebase Concerns
 
-**Analysis Date:** 2026-04-01
+**Analysis Date:** 2026-04-04
 
-## Overview
+## Security Concerns
 
-Phase 1 (Foundation & Auth) is complete and deployed. The backend has solid fundamentals: bcrypt password hashing, JWT access/refresh separation, Zod validation on all endpoints, HTTP-only cookies, and graceful shutdown handling. However, several significant concerns remain — some by design (pending phases), some requiring immediate attention, and some that represent real technical debt.
+### Critical: Password Reset Token Has No Expiry
+- **File:** `src/routes/auth.routes.js` (lines 179-206)
+- **Issue:** The password reset flow accepts any non-empty token without validation or expiry checking
+- **Impact:** Anyone who knows a user's email can reset their password without a time-limited token
+- **Current behavior:** Line 195 only checks `if (!user || !token)` - token can be any non-empty string
+- **Fix approach:** Implement token store with expiry (store hashed token in DB with timestamp), or integrate with a real email service
 
----
+### High: Insecure TLS on ESP32
+- **File:** `firmware/src/websocket_client.cpp` (line 46)
+- **Issue:** Uses `setInsecure()` for WSS connections - TLS certificate verification is disabled
+- **Current code:** `_ws.beginSSL(_backendUrl.c_str(), 443, "/ws", "", "");`
+- **Impact:** ESP32 cannot verify it's connecting to the legitimate backend server
+- **Risk:** Man-in-the-middle attack could intercept device commands
+- **Note:** Comment explains this is due to unstable cert-bundle API in Arduino V3 / ESP-IDF 5.x
 
-## Critical Concerns
+### Medium: JWT Secrets via Environment Variables
+- **Files:** `render.yaml` (lines 17-19), `src/utils/jwt.js`
+- **Issue:** JWT_SECRET and JWT_REFRESH_SECRET are environment variables only
+- **Impact:** If Render credentials are compromised, tokens can be forged
+- **Mitigation:** Use strong random secrets, rotate periodically
+- **Missing:** No documented secret rotation procedure
 
-### C1: WebSocket Server Not Implemented
-**Severity:** Critical  
-**Phase:** Phase 2 (not started)  
-**Files:** `src/index.js`
+### Medium: Device Token Exposed in Logs
+- **File:** `firmware/src/main.cpp` (line 69)
+- **Issue:** Device token prefix is printed to serial output: `Serial.printf("  Device Token: %.8s...\n", DEVICE_TOKEN);`
+- **Impact:** Physical access to device + serial connection exposes token
+- **Mitigation:** Only show partial token (already done), but full token still in memory
 
-The entire real-time IoT control system depends on WebSocket communication, but `src/index.js` has no WebSocket server. The `ws` library is listed in STACK.md but is not imported or used anywhere. The Express server handles only HTTP.
-
-**Impact:** Phase 2 cannot begin. ESP32 cannot connect. All real-time device control is blocked.
-
-**Fix:** Implement WebSocket server in `src/index.js` using `ws` library, integrated with the Express HTTP server. Phase 2 plan 02-03 covers this.
-
----
-
-### C2: No Device Shadow State or Connection Registry
-**Severity:** Critical  
-**Phase:** Phase 2 (not started)  
-**Files:** `src/models/Device.js`
-
-`Device.js` tracks `status` and `lastSeen` fields, but there's no server-side mechanism to maintain a live connection registry mapping `deviceId → WebSocket`. Without this, the server cannot route commands to specific devices.
-
-**Impact:** Commands from web dashboard cannot be routed to ESP32 devices. BE-04 (device shadow state) is unimplemented.
-
-**Fix:** Phase 2 plan 02-03 requires building a `Map<deviceId, WebSocket>` registry with ping/pong heartbeat tracking.
-
----
-
-### C3: Password Reset Tokens Have No Expiry or Storage
-**Severity:** High  
-**Phase:** Phase 1 (implemented)  
-**Files:** `src/routes/auth.routes.js` (lines 142-198)
-
-The password reset flow (line 158-161) generates a random token and logs it to the console. The reset endpoint (line 172-198) only checks that the token is "non-empty" — no expiry, no token store, no single-use enforcement. Anyone who obtains the token and email can reset the password.
-
-```javascript
-// Line 187-188 — token only checked for truthiness
-if (!user || !token) {
-  return res.status(400).json({ error: 'Invalid reset request' });
-}
-```
-
-**Impact:** Token leakage via server logs = account takeover. Tokens cannot be revoked.
-
-**Fix (Phase 2):** Store reset tokens in a `PasswordReset` collection with expiry timestamps. Delete token after use.
+### Low: CORS Allows All Origins in Development
+- **File:** `src/index.js` (lines 20-25)
+- **Current code:** `origin: true` allows any origin
+- **Production:** Should be restricted to `FRONTEND_URL` only
+- **Impact:** In development, any site can make authenticated requests
 
 ---
 
-### C4: JWT Refresh Token Not Invalidated on Use
-**Severity:** High  
-**Phase:** Phase 1 (implemented)  
-**Files:** `src/routes/auth.routes.js` (lines 216-237)
+## Hardware & Firmware Concerns
 
-The `/api/auth/refresh` endpoint validates the refresh token and issues new access + refresh tokens, but does not invalidate the used refresh token. This is token reuse — an attacker who intercepts a refresh token can continue using it even after legitimate use.
+### Critical: Relay Flyback Protection Required
+- **Files:** `firmware/src/relay_controller.h` (lines 1-44), STATE.md blocker
+- **Issue:** Hardware damage will occur without proper flyback diode (1N4007)
+- **Impact:** Without diode, voltage spike when relay de-energizes can damage ESP32 GPIO
+- **Mitigation:** Documentation includes wiring diagram, but user must follow it
+- **Risk level:** HIGH for users unfamiliar with electronics
 
-**Impact:** Stolen refresh tokens remain valid for up to 7 days. No way to revoke compromised tokens.
+### Medium: Single GPIO Pin for Relay
+- **File:** `firmware/src/relay_controller.cpp` (line 25)
+- **Current:** Only GPIO 2 is supported
+- **Impact:** Cannot expand to multiple relays without code changes
+- **Fix approach:** Make pin configurable via build flag
 
-**Fix (Phase 2):** Implement token families or a denylist. On refresh, store `jti` (JWT ID) in a revoked tokens collection with expiry matching the token's remaining lifetime.
+### Medium: WiFi Credentials Baked Into Firmware
+- **Files:** `firmware/src/main.cpp` (lines 32-46), `WiFiManager.h` (lines 108-129)
+- **Issue:** WiFi SSID/password must be set at compile time via build flags
+- **Impact:** 
+  - Cannot change WiFi network without recompiling
+  - Token regeneration required when credentials change
+  - Credentials visible in compiled binary
+- **Fix approach:** Implement WiFi provisioning (BLE, SmartConfig, or captive portal)
 
----
+### Medium: No Watchdog Timer Configuration
+- **File:** `firmware/src/main.cpp` (line 237)
+- **Issue:** Uses `delay(100)` but no explicit ESP32 watchdog configuration
+- **Impact:** Long-running operations could trigger watchdog reset
+- **Recommendation:** Configure `esp_task_wdt_init()` for production
 
-## Security Considerations
-
-### S1: No Rate Limiting on Auth Endpoints
-**Severity:** High  
-**Files:** `src/routes/auth.routes.js`
-
-There is no rate limiting on `/api/auth/login`, `/api/auth/signup`, or `/api/auth/forgot-password`. An attacker can brute-force passwords or flood the signup endpoint.
-
-**Current mitigation:** None. `express-rate-limit` not installed.
-
-**Fix:** Add `express-rate-limit` middleware to auth routes. Specifically:
-- Login: 5 attempts per IP per 15 minutes
-- Signup: 10 attempts per IP per hour
-- Forgot password: 3 per IP per hour
-
----
-
-### S2: CORS Allows Any Subdomain of Frontend_URL
-**Severity:** Medium  
-**Files:** `src/index.js` (lines 17-22)
-
-```javascript
-cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3001',
-  credentials: true,
-})
-```
-
-If `FRONTEND_URL=https://example.com`, this allows `https://anything.example.com`. For a production IoT dashboard, this is too permissive.
-
-**Fix:** Parse the origin and verify it matches exactly, or use a list of allowed origins.
+### Low: ESP32 Heap Monitoring
+- **File:** `firmware/src/main.cpp` (line 254)
+- **Current:** Prints free heap but no monitoring/alerting
+- **Risk:** Memory leak could cause instability over time
+- **Recommendation:** Add periodic heap check and reconnect on low memory
 
 ---
 
-### S3: Device Tokens Stored in Plain Text in Database
-**Severity:** Medium  
-**Files:** `src/models/Device.js`, `src/utils/deviceToken.js`
+## Backend Concerns
 
-Device tokens (`deviceId` field) are UUID v4 generated via `crypto.randomUUID()`. They are stored unhashed, similar to passwords. If the database is breached, all device credentials are exposed.
+### High: MongoDB Free Tier Storage Limit
+- **Files:** `src/db/connection.js`, STACK.md
+- **Issue:** MongoDB Atlas M0 free tier limits to 512MB
+- **Impact:** Transaction log grows unbounded - will hit limit eventually
+- **Current state:** No cleanup/archival strategy implemented
+- **Fix approach:** Implement TTL indexes on transactions, archive old records
 
-**Current mitigation:** Device tokens are not passwords — they don't grant account access directly.
+### Medium: WebSocket Server at /ws Only Accepts Devices
+- **File:** `src/ws/hub.js` (lines 42-154)
+- **Issue:** WebSocket endpoint is designed for ESP32 devices only
+- **Impact:** Frontend uses HTTP polling instead of WebSocket (see `frontend/src/store/deviceStore.ts` line 69)
+- **Code note:** Hub sends `welcome` message with device-specific payload
+- **Future:** If frontend needs real-time updates, separate WebSocket endpoint required
 
-**Fix (Phase 4):** Consider hashing device tokens at rest, similar to password hashing. This adds lookup complexity but limits blast radius of database breaches.
+### Medium: No Rate Limiting
+- **Files:** `src/index.js`, route handlers
+- **Issue:** No express-rate-limit or similar middleware
+- **Impact:** 
+  - Brute force attacks on auth endpoints
+  - Command flooding from authenticated users
+- **Fix approach:** Add rate limiting per IP and per user
+
+### Medium: Error Messages Leak Internal Details
+- **File:** `src/index.js` (line 45)
+- **Current:** `console.error('Unhandled error:', err)` logs full stack traces
+- **Issue:** Error responses could expose internal paths, queries, stack traces
+- **Fix approach:** Sanitize errors in production, use custom error types
+
+### Medium: Database Connection Not Pooled Explicitly
+- **File:** `src/db/connection.js` (line 16)
+- **Current:** Mongoose handles pooling by default
+- **Risk:** At scale, connection pool configuration may be needed
+- **Note:** Mongoose defaults are usually sufficient for low traffic
+
+### Low: No Request ID / Correlation ID
+- **Issue:** No request tracking across logs
+- **Impact:** Hard to trace issues in distributed system
+- **Fix approach:** Add request ID middleware
+
+### Low: Graceful Shutdown Timeout Too Short
+- **File:** `src/index.js` (line 60)
+- **Current:** 1000ms (1 second) shutdown timeout
+- **Risk:** In-flight WebSocket messages may be dropped on restart
+- **Fix approach:** Increase to 5000ms minimum
 
 ---
 
-### S4: No Input Validation on WebSocket Messages (Future Risk)
-**Severity:** High (when implemented)  
-**Phase:** Phase 2  
-**Files:** Not yet implemented
+## Frontend Concerns
 
-PITFALLS.md S3 (No Input Validation on Backend Command Endpoint) is not yet applicable because WebSocket is not implemented. When Phase 2 adds WebSocket handling, Zod validation must be applied to all incoming messages.
+### Medium: WebSocket Client Implemented But Unused
+- **File:** `frontend/src/lib/api.ts` (lines 87-89)
+- **Current:** `getWebSocketUrl()` function exists but frontend uses HTTP polling
+- **Impact:** Dead code that may confuse developers
+- **Reason:** Comment at `deviceStore.ts` line 69 explains: "/ws is for ESP32 device tokens only"
 
-**Fix:** Apply strict Zod schemas to all WebSocket message types. Phase 2 plan 02-03 must include message validation.
+### Medium: Optimistic UI Updates Without Confirmation
+- **File:** `frontend/src/store/deviceStore.ts` (lines 138-144)
+- **Current:** Relay state updates optimistically before server confirmation
+- **Impact:** UI shows "ON" but device might not have received command
+- **Risk:** User assumes action completed, but relay state unchanged
+- **Note:** 10-second timeout clears pending state, but no retry logic
+
+### Medium: Token Stored in localStorage
+- **File:** `frontend/src/lib/api.ts` (lines 11-33)
+- **Issue:** Access tokens stored in localStorage (vulnerable to XSS)
+- **Mitigation:** Tokens are short-lived (15 minutes), but refresh tokens also in localStorage
+- **Better approach:** HttpOnly cookies (backend already sets them), but cross-origin CORS complicates this
+
+### Low: No Loading States for Device List
+- **File:** `frontend/src/store/deviceStore.ts` (line 91)
+- **Issue:** `fetchDevices()` catches errors but doesn't expose loading state
+- **Impact:** UI doesn't show loading spinner for initial device fetch
+
+### Low: Dashboard Doesn't Auto-Refresh After Rename
+- **File:** `frontend/src/components/dashboard/device-card.tsx`
+- **Issue:** After rename, local state updates but doesn't re-fetch from server
+- **Impact:** Potential stale data if rename API call fails silently
+
+### Low: No Error Boundary in React
+- **Files:** `frontend/src/app/*/page.tsx`
+- **Issue:** No error boundary components for graceful error handling
+- **Impact:** Uncaught errors crash entire page
+
+---
+
+## Operational Concerns
+
+### High: Render Free Tier Spin-Down
+- **Files:** `render.yaml` (line 6), STATE.md blocker
+- **Issue:** Backend spins down after 15 minutes of inactivity
+- **Impact:** First request after idle takes ~30 seconds (cold start)
+- **Current mitigation:** WebSocket keepalive (30s ping) should prevent spin-down
+- **Risk:** If keepalive fails or stops, users experience long delays
+- **Note:** Render docs state WebSocket activity keeps instance alive
+
+### High: No Database Backups
+- **Issue:** MongoDB Atlas M0 free tier has no automated backups
+- **Impact:** Data loss from accidental deletion or corruption is unrecoverable
+- **Fix approach:** Manual exports, or upgrade to paid tier with backups
+
+### Medium: No Monitoring/Observability
+- **Issue:** No Application Insights, DataDog, or similar
+- **Impact:** No visibility into:
+  - API latency percentiles
+  - Error rates
+  - Device connection patterns
+  - Transaction volume
+- **Fix approach:** Add logging aggregator, error tracking service
+
+### Medium: No CI/CD for ESP32 Firmware
+- **Issue:** Firmware compiles locally only
+- **Impact:** No automated builds, no regression testing
+- **Future:** Add GitHub Actions workflow to compile firmware on PR/push
+
+### Medium: No Staging Environment
+- **Issue:** Single production environment (Render free tier)
+- **Impact:** Changes tested directly in production
+- **Fix approach:** Feature flags or separate staging branch/environment
+
+### Low: No Health Checks for Dependencies
+- **File:** `src/index.js` (lines 32-41)
+- **Current:** `/health` returns server status but doesn't check MongoDB connectivity
+- **Impact:** Render health check passes even if database is down
+- **Fix approach:** Add database ping to health check endpoint
+
+### Low: Missing Process Manager
+- **File:** `package.json` (line 14)
+- **Current:** Uses `node src/index.js` directly
+- **Risk:** No auto-restart on crash, no cluster mode
+- **Note:** Render handles basic restarts, but not cluster mode
 
 ---
 
 ## Scalability Concerns
 
-### SC1: MongoDB Connection Pool Unbounded
-**Severity:** High  
-**Files:** `src/db/connection.js` (lines 16-18)
+### Low: Single WebSocket Server Instance
+- **File:** `src/ws/hub.js`
+- **Issue:** All device connections go to single instance
+- **Current scale:** OK for single ESP32 + few web clients
+- **Future:** Multi-instance requires sticky sessions or pub/sub (Redis)
 
-```javascript
-_connection = await mongoose.connect(uri, {
-  serverApi: { version: '1' },
-});
-```
+### Low: Transaction Hashing on Every Insert
+- **File:** `src/models/Transaction.js` (lines 56-92)
+- **Issue:** `pre('validate')` hook queries for previous transaction on every insert
+- **Impact:** Performance degrades as transaction count grows
+- **Note:** Indexed query should remain fast, but consider batch processing for bulk imports
 
-No `maxPoolSize` specified. MongoDB Atlas M0 has a 500 connection limit. With Render's free tier, multiple server instances cannot exist, but connection leaks from unclosed connections could still exhaust the pool.
-
-**Fix:** Add `maxPoolSize: 10` to connection options.
-
----
-
-### SC2: Transaction Log Will Grow Without Bound
-**Severity:** Medium  
-**Phase:** Phase 4 (not started)  
-**Files:** `src/models/Device.js` (only — transactions collection not yet created)
-
-The transactions collection (planned for Phase 4) has no TTL index or archival strategy. Every ON/OFF action creates a record. With frequent toggling, the 512MB Atlas M0 limit could be hit in months.
-
-**Fix (Phase 4):** Add TTL index on transactions collection (e.g., expire after 1 year). Phase 4 plan 04-01 must include this.
+### Low: No Pagination on Device List
+- **File:** `src/routes/device.routes.js` (line 58)
+- **Current:** Returns all devices for user
+- **Impact:** Users with many devices get slow responses
+- **Fix approach:** Add cursor-based pagination
 
 ---
 
-### SC3: No Index on Transactions Collection
-**Severity:** Medium  
-**Phase:** Phase 4 (not started)
+## Dependencies at Risk
 
-When the transactions collection is created, it will need indexes on `deviceId`, `userId`, and `timestamp` for efficient queries. Without these, transaction history queries will be slow.
+### bcrypt
+- **File:** `package.json` (line 25)
+- **Risk:** CPU-intensive, could be target for timing attacks
+- **Current:** Version ^5.1.1 - OK
+- **Future:** Consider Argon2 for better password hashing (planned for v2 per STACK.md)
 
-**Fix (Phase 4):** Define indexes when creating the transactions schema.
+### jsonwebtoken
+- **File:** `package.json` (line 30)
+- **Risk:** Vulnerability in JWT library could allow token forgery
+- **Current:** Version ^9.0.2 - stable
+- **Mitigation:** Keep updated, use strong secrets
 
----
-
-### SC4: Render Free Tier Instance Hours
-**Severity:** Low  
-**Files:** `src/index.js`
-
-The server implements a keepalive mechanism is not implemented. If ESP32 devices send frequent pings to prevent Render spin-down, the 750 free instance hours/month can be consumed quickly. A single always-on ESP32 polling every 5 minutes = 8,640 requests/month.
-
-**Current mitigation:** Phase 2 plan 02-01 includes `ping_interval_sec` configuration. The ESP32 will send WebSocket pings, which count as activity on Render.
-
-**Fix:** Monitor instance hour consumption in Render dashboard. Consider upgrading to paid tier if needed.
-
----
-
-## Platform Risks
-
-### P1: Render Free Tier Spin-Down
-**Severity:** High  
-**Phase:** Phase 2  
-**Files:** Not yet implemented
-
-PITFALLS.md B1 (Render Free Tier Spin-Down Breaks ESP32 Connections) is unaddressed because WebSocket isn't implemented yet. When the ESP32 connects and Render spins down after 15 minutes of inactivity, all WebSocket connections drop.
-
-**Fix:** Phase 2 plan 02-01 includes reconnection logic with exponential backoff on the ESP32. Accept that first command after idle may take ~60 seconds.
+### ws (WebSocket library)
+- **File:** `package.json` (line 33)
+- **Risk:** Protocol-level bugs could crash server
+- **Current:** Version ^8.19.0 - actively maintained
+- **Mitigation:** Keep updated, monitor for security advisories
 
 ---
 
-### P2: MongoDB Atlas M0 Limitations
-**Severity:** Low  
-**Files:** `src/db/connection.js`
+## Known Missing Features (Per Roadmap)
 
-Atlas M0 free tier has no automated backups and limited storage (512MB). Data loss is possible if accidental deletion occurs.
+### Authentication
+- [ ] Password reset via email (currently logs to console)
+- [ ] Email verification on signup
+- [ ] 2FA/MFA support
+- [ ] Account lockout after failed attempts
 
-**Current mitigation:** None.
+### Devices
+- [ ] Device groups/folders
+- [ ] Device sharing between users
+- [ ] Bulk device operations
+- [ ] Device firmware update (OTA)
 
-**Fix (Phase 2+):** Implement periodic MongoDB export to cold storage. Set Atlas storage alerts at 70% threshold.
+### Transactions
+- [ ] Transaction export (CSV/JSON)
+- [ ] Transaction replay/undo
+- [ ] Real blockchain integration (currently simulated)
+- [ ] Transaction verification API
 
----
+### Frontend
+- [ ] Real-time updates via WebSocket (currently polling)
+- [ ] Mobile responsive improvements
+- [ ] PWA/offline support
+- [ ] Dark mode toggle
 
-## Technical Debt
-
-### TD1: Frontend Not Started
-**Severity:** Medium  
-**Phase:** Phase 3 (not started)
-
-The frontend (Next.js app with shadcn/ui, Zustand, Tailwind v4) has not been created. The web dashboard, real-time controls, and user-facing device management UI are all pending.
-
-**Fix:** Phase 3 implements the full frontend.
-
----
-
-### TD2: ESP32 Firmware Not Started
-**Severity:** High  
-**Phase:** Phase 2 (not started)
-
-The ESP32 firmware (WiFi connection, WSS client, relay actuation, reconnection logic) is not written. This is the core hardware interface.
-
-**Fix:** Phase 2 plans 02-01 and 02-02 implement the firmware.
-
----
-
-### TD3: No OTA Update Mechanism
-**Severity:** Medium  
-**Phase:** Out of scope for v1 (v2+)
-
-PITFALLS.md H4 (No Firmware Update Mechanism) is deferred. Without OTA, firmware bugs in deployed devices require physical access to fix.
-
-**Fix:** Implement OTA in v2. OTA-01 is in v2 requirements.
+### Operations
+- [ ] Email notifications
+- [ ] SMS alerts
+- [ ] Webhook support
+- [ ] API rate limiting
+- [ ] Usage analytics dashboard
 
 ---
 
-### TD4: "Blockchain" Immutability Is Misleading
-**Severity:** Low (documentation)  
-**Phase:** Phase 4 (not started)  
-**Files:** Not yet implemented
+## Test Coverage Gaps
 
-PITFALLS.md T1 (Blockchain-Style Transactions Are Actually Mutable) — the append-only pattern planned for Phase 4 provides audit trail convenience but not true blockchain immutability. Documentation should be clear: "append-only audit log" not "blockchain."
+### Backend
+- **No unit tests** - `package.json` has jest configured but no tests exist
+- **Missing coverage:** Auth routes, device commands, transaction creation, WebSocket message handling
+- **Priority:** HIGH
 
-**Fix:** Be precise in user-facing and internal documentation. Phase 4 plan 04-01 should enforce append-only at the application level.
+### Frontend
+- **No tests** - No test framework configured
+- **Missing coverage:** Auth forms, device toggle, store actions
+- **Priority:** MEDIUM
 
----
-
-## Missing Features (Not Yet Required)
-
-These are concerns flagged in PITFALLS.md that are intentionally deferred to v2 or later:
-
-| Concern | Severity | Phase | Status |
-|---------|----------|-------|--------|
-| Flyback diode / relay kickback protection | Critical | Phase 2 | Not started — hardware |
-| ESP32 WiFi auto-reconnect | Critical | Phase 2 | Not started — firmware |
-| Power supply brownout handling | Critical | Phase 2 | Not started — hardware |
-| Safe boot state (relay defaults to OFF) | Medium | Phase 2 | Not started — firmware |
-| No confirmation for destructive relay toggles | Medium | Phase 3 | Not started — frontend |
-| No device monitoring / alerting | High | Phase 2 | Not started |
-| Hardcoded WiFi credentials | High | Phase 1 | Not applicable — not started |
-| Mutal TLS / certificate auth | High | v2 | Out of scope |
-| 2FA / RBAC | Medium | v2 | Out of scope |
+### ESP32 Firmware
+- **No tests** - Embedded testing is challenging
+- **Manual testing:** Required for relay control, WiFi reconnection, WebSocket commands
+- **Priority:** LOW (integration testing via actual hardware)
 
 ---
 
-## What's Solid (Phase 1 Delivered)
+## Technical Debt Summary
 
-The Phase 1 implementation is well-structured for its scope:
-
-| Area | Assessment |
-|------|------------|
-| **Password hashing** | bcrypt with 12 salt rounds — industry standard |
-| **JWT separation** | Access tokens (15m) vs refresh tokens (7d) with separate secrets |
-| **Token storage** | HTTP-only cookies, not localStorage — XSS resistant |
-| **Input validation** | Zod schemas on all endpoints — comprehensive |
-| **Auth middleware** | `requireAuth` and `optionalAuth` — clean separation |
-| **Error handling** | Global error handler + per-route try/catch with `next(err)` |
-| **Graceful shutdown** | SIGTERM/SIGINT handlers, MongoDB connection close |
-| **CORS** | Configurable origin, credentials enabled |
-| **Connection reuse** | Mongoose connection cached and reused |
-
----
-
-## Risk Summary
-
-| ID | Concern | Severity | Fix Phase |
-|----|---------|----------|-----------|
-| C1 | WebSocket server not implemented | Critical | Phase 2 |
-| C2 | No device connection registry | Critical | Phase 2 |
-| C3 | Password reset tokens have no expiry | High | Phase 2 |
-| C4 | JWT refresh tokens not invalidated on use | High | Phase 2 |
-| S1 | No rate limiting on auth endpoints | High | Immediate |
-| S2 | CORS origin too permissive | Medium | Phase 2 |
-| S3 | Device tokens stored unhashed | Medium | Phase 4 |
-| S4 | WebSocket input validation not yet | High | Phase 2 |
-| SC1 | MongoDB connection pool unbounded | High | Immediate |
-| SC2 | Transaction log grows unbounded | Medium | Phase 4 |
-| SC3 | No indexes on transactions | Medium | Phase 4 |
-| SC4 | Render free tier instance hours | Low | Monitor |
-| P1 | Render spin-down breaks connections | High | Phase 2 |
-| P2 | Atlas M0 limitations (no backup) | Low | Phase 2+ |
-| TD1 | Frontend not started | Medium | Phase 3 |
-| TD2 | ESP32 firmware not started | High | Phase 2 |
-| TD3 | No OTA update mechanism | Medium | v2 |
-| TD4 | "Blockchain" misnomer | Low | Phase 4 |
-
-**Immediate action items (no phase required):**
-1. Add `maxPoolSize: 10` to MongoDB connection options in `src/db/connection.js`
-2. Add `express-rate-limit` to auth routes
+| Item | Priority | Files | Impact |
+|------|----------|-------|--------|
+| Password reset token expiry | CRITICAL | `src/routes/auth.routes.js` | Security vulnerability |
+| TLS verification disabled on ESP32 | HIGH | `firmware/src/websocket_client.cpp` | MITM risk |
+| MongoDB storage limit (512MB) | HIGH | `src/db/connection.js` | Data loss risk |
+| Render spin-down latency | HIGH | `render.yaml` | Poor UX |
+| No rate limiting | MEDIUM | `src/index.js` | DoS risk |
+| No database backups | HIGH | `src/db/connection.js` | Data loss risk |
+| No monitoring | MEDIUM | - | No observability |
+| Dead WebSocket code in frontend | MEDIUM | `frontend/src/lib/api.ts` | Confusion |
+| Optimistic UI without retry | MEDIUM | `frontend/src/store/deviceStore.ts` | UX inconsistency |
+| Token in localStorage | MEDIUM | `frontend/src/lib/api.ts` | XSS vulnerability |
+| No CI/CD for firmware | MEDIUM | - | Manual builds |
+| Missing test coverage | HIGH | - | Bug risk |
+| CORS too permissive | LOW | `src/index.js` | Security hardening |
 
 ---
 
-*Concerns audit: 2026-04-01*
+*Concerns audit: 2026-04-04*
