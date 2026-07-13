@@ -253,10 +253,13 @@ router.post('/wallet', requireAuth, async (req, res, next) => {
   }
 });
 
-// POST /api/auth/refresh — refresh access token using refresh cookie
+// POST /api/auth/refresh — refresh access token using a secure cookie or the
+// persisted browser refresh token. Returning the rotated pair also lets a
+// cross-origin dashboard keep its browser session alive without relying on a
+// cookie being available in local HTTP development.
 router.post('/refresh', async (req, res, next) => {
   try {
-    const refreshToken = req.cookies?.refreshToken;
+    const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
     if (!refreshToken) {
       return res.status(401).json({ error: 'No refresh token' });
     }
@@ -269,9 +272,9 @@ router.post('/refresh', async (req, res, next) => {
 
     const newAccessToken = generateAccessToken(user._id.toString());
     const newRefreshToken = generateRefreshToken(user._id.toString());
-    setAuthCookies(res, newAccessToken, newRefreshToken);
+    const tokens = setAuthCookies(res, newAccessToken, newRefreshToken);
 
-    return res.status(200).json({ message: 'Tokens refreshed' });
+    return res.status(200).json({ message: 'Tokens refreshed', ...tokens });
   } catch {
     return res.status(401).json({ error: 'Invalid or expired refresh token' });
   }

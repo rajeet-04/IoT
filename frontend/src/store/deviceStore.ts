@@ -65,7 +65,7 @@ export const useDeviceStore = create<DeviceState & DeviceActions>((set, get) => 
     ws: null,
     pollInterval: null,
 
-    init: (_backendUrl: string) => {
+    init: () => {
         // /ws is for ESP32 device tokens only — use HTTP polling instead
         set({ wsStatus: 'connected' });
         
@@ -94,7 +94,7 @@ export const useDeviceStore = create<DeviceState & DeviceActions>((set, get) => 
             const data = await res.json();
             set({
                 devices: data.devices.map((d: { id: string; deviceId: string; name: string; status: string; lastSeen: string | null; relayState?: boolean }) => ({
-                    id: d.id || (d as any)._id,
+                    id: d.id || (d as { _id?: string })._id || d.deviceId,
                     deviceId: d.deviceId,
                     name: d.name,
                     status: d.status as 'online' | 'offline',

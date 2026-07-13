@@ -2,7 +2,7 @@
  * Authentication Utilities
  */
 
-import { apiPost, apiGet, tokenStore } from './api';
+import { apiPost, apiGet, refreshSession, tokenStore } from './api';
 
 export interface User {
     id: string;
@@ -52,8 +52,7 @@ export async function logout(): Promise<void> {
  * Get current authenticated user
  */
 export async function getCurrentUser(): Promise<User | null> {
-    const token = tokenStore.get();
-    if (!token) return null;
+    if (!tokenStore.get() && !await refreshSession()) return null;
     
     try {
         const res = await apiGet('/api/auth/me');
@@ -70,4 +69,13 @@ export async function getCurrentUser(): Promise<User | null> {
  */
 export function isAuthenticated(): boolean {
     return !!tokenStore.get();
+}
+
+/**
+ * Browser session detection used by route guards and the login page.
+ * It validates the stored access token and silently restores it when only the
+ * persisted refresh token remains after a browser restart or token expiry.
+ */
+export async function restoreBrowserSession(): Promise<User | null> {
+    return getCurrentUser();
 }

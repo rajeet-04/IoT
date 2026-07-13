@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 
-function cn(...inputs: any[]) {
+function cn(...inputs: Array<string | undefined | false>) {
   return inputs.filter(Boolean).join(" ");
 }
 
@@ -16,9 +16,9 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     const Comp = asChild ? Slot : "button";
     
     const variants = {
-      default: "bg-slate-900 text-white hover:bg-slate-900/90",
+      default: "bg-indigo-600 text-white hover:bg-indigo-500",
       destructive: "bg-red-500 text-white hover:bg-red-500/90",
-      outline: "border border-slate-200 bg-white hover:bg-slate-100 hover:text-slate-900",
+      outline: "border border-slate-200 bg-white hover:bg-slate-50 hover:text-slate-900",
       secondary: "bg-slate-100 text-slate-900 hover:bg-slate-100/80",
       ghost: "hover:bg-slate-100 hover:text-slate-900",
       link: "text-slate-900 underline-offset-4 hover:underline",
@@ -34,7 +34,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     return (
       <Comp
         className={cn(
-          "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-950 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+          "inline-flex items-center justify-center whitespace-nowrap rounded-xl text-sm font-semibold ring-offset-white transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
           variants[variant],
           sizes[size],
           className

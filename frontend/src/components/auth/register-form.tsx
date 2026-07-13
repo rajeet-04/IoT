@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { register } from '@/lib/auth';
 import { motion, AnimatePresence, Variants } from 'framer-motion';
-import { Loader2, Fingerprint, Lock, AlertCircle } from 'lucide-react';
+import { Loader2, Mail, LockKeyhole, AlertCircle } from 'lucide-react';
 
 export default function RegisterForm() {
     const router = useRouter();
@@ -68,7 +68,7 @@ export default function RegisterForm() {
                         initial={{ opacity: 0, height: 0, y: -10 }}
                         animate={{ opacity: 1, height: 'auto', y: 0 }}
                         exit={{ opacity: 0, height: 0, y: -10 }}
-                        className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-xl flex items-start gap-3 text-sm"
+                        className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
                     >
                         <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
                         <p>{error}</p>
@@ -77,12 +77,12 @@ export default function RegisterForm() {
             </AnimatePresence>
 
             <motion.div variants={itemVariants} className="space-y-1.5">
-                <label htmlFor="email" className="block text-xs font-semibold text-slate-400 uppercase tracking-wider pl-1">
+                <label htmlFor="email" className="block pl-1 text-sm font-semibold text-slate-700">
                     Email Address
                 </label>
                 <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                        <Fingerprint className="h-5 w-5 text-slate-500" />
+                        <Mail className="h-5 w-5 text-slate-400" />
                     </div>
                     <input
                         id="email"
@@ -97,12 +97,12 @@ export default function RegisterForm() {
             </motion.div>
 
             <motion.div variants={itemVariants} className="space-y-1.5">
-                <label htmlFor="password" className="block text-xs font-semibold text-slate-400 uppercase tracking-wider pl-1">
+                <label htmlFor="password" className="block pl-1 text-sm font-semibold text-slate-700">
                     Password
                 </label>
                 <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                        <Lock className="h-5 w-5 text-slate-500" />
+                        <LockKeyhole className="h-5 w-5 text-slate-400" />
                     </div>
                     <input
                         id="password"
@@ -118,12 +118,12 @@ export default function RegisterForm() {
             </motion.div>
             
             <motion.div variants={itemVariants} className="space-y-1.5">
-                <label htmlFor="confirmPassword" className="block text-xs font-semibold text-slate-400 uppercase tracking-wider pl-1">
+                <label htmlFor="confirmPassword" className="block pl-1 text-sm font-semibold text-slate-700">
                     Confirm Password
                 </label>
                 <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
-                        <Lock className="h-5 w-5 text-slate-500 opacity-60" />
+                        <LockKeyhole className="h-5 w-5 text-slate-400 opacity-60" />
                     </div>
                     <input
                         id="confirmPassword"
@@ -160,10 +160,10 @@ export default function RegisterForm() {
                 </button>
             </motion.div>
 
-            <motion.div variants={itemVariants} className="text-center text-sm pt-4 border-t border-white/10 mt-6">
-                <p className="text-slate-400">
+            <motion.div variants={itemVariants} className="mt-6 border-t border-slate-100 pt-5 text-center text-sm">
+                <p className="text-slate-500">
                     Already have an account?{' '}
-                    <Link href="/login" className="text-cyan-400 hover:text-cyan-300 font-medium transition-colors">
+                    <Link href="/login" className="font-semibold text-indigo-600 transition-colors hover:text-indigo-500">
                         Sign In
                     </Link>
                 </p>

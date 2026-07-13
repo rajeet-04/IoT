@@ -9,19 +9,19 @@ interface ConnectionStatusProps {
 export default function ConnectionStatus({ status }: ConnectionStatusProps) {
     const config = {
         connecting: {
-            color: 'bg-yellow-50 text-yellow-700 border-yellow-200',
+            color: 'bg-amber-50 text-amber-700 border-amber-200',
             dot: 'bg-yellow-500 animate-pulse',
             text: 'Connecting...',
             icon: Loader2,
         },
         connected: {
-            color: 'bg-green-50 text-green-700 border-green-200',
-            dot: 'bg-green-500 animate-pulse',
+            color: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+            dot: 'bg-emerald-500 animate-pulse',
             text: 'Connected',
             icon: Wifi,
         },
         disconnected: {
-            color: 'bg-red-50 text-red-700 border-red-200',
+            color: 'bg-slate-100 text-slate-600 border-slate-200',
             dot: 'bg-red-500',
             text: 'Disconnected',
             icon: WifiOff,

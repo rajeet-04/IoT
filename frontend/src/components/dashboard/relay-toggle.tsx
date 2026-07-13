@@ -41,8 +41,8 @@ export default function RelayToggle({
                 relative inline-flex items-center gap-3 px-4 py-3 rounded-xl
                 transition-all duration-200 min-h-[56px]
                 ${currentState 
-                    ? 'bg-green-500 text-white shadow-lg shadow-green-500/30' 
-                    : 'bg-gray-200 text-gray-700'
+                    ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/25'
+                    : 'border border-slate-200 bg-slate-50 text-slate-600'
                 }
                 ${isDisabled 
                     ? 'opacity-50 cursor-not-allowed' 
