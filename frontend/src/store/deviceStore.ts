@@ -45,10 +45,10 @@ interface DeviceState {
  * Device store actions
  */
 interface DeviceActions {
-    init: (backendUrl: string) => void;
+    init: () => void;
     disconnect: () => void;
     fetchDevices: () => Promise<void>;
-    sendCommand: (deviceId: string, action: string, params: Record<string, unknown>) => void;
+    sendCommand: (deviceId: string, action: string) => void;
     renameDevice: (deviceId: string, name: string) => Promise<void>;
     updateDevice: (deviceId: string, updates: Partial<Device>) => void;
     setWsStatus: (status: DeviceState['wsStatus']) => void;
@@ -65,7 +65,7 @@ export const useDeviceStore = create<DeviceState & DeviceActions>((set, get) => 
     ws: null,
     pollInterval: null,
 
-    init: (_backendUrl: string) => {
+    init: () => {
         // /ws is for ESP32 device tokens only — use HTTP polling instead
         set({ wsStatus: 'connected' });
         
@@ -94,7 +94,7 @@ export const useDeviceStore = create<DeviceState & DeviceActions>((set, get) => 
             const data = await res.json();
             set({
                 devices: data.devices.map((d: { id: string; deviceId: string; name: string; status: string; lastSeen: string | null; relayState?: boolean }) => ({
-                    id: d.id || (d as any)._id,
+                    id: d.id || (d as { _id?: string })._id || d.deviceId,
                     deviceId: d.deviceId,
                     name: d.name,
                     status: d.status as 'online' | 'offline',
@@ -108,7 +108,7 @@ export const useDeviceStore = create<DeviceState & DeviceActions>((set, get) => 
         }
     },
 
-    sendCommand: async (deviceId: string, action: string, _params: Record<string, unknown>) => {
+    sendCommand: async (deviceId: string, action: string) => {
         const { devices, pendingCommands } = get();
         
         // Find device by MongoDB _id (that's what the UI passes via device.id)

@@ -4,17 +4,21 @@
  * for reliable connection without SDK spinner issues.
  */
 
-/**
- * Get the injected MetaMask provider
- */
-function getEthereumProvider(): any {
+interface EthereumProvider {
+  isMetaMask?: boolean;
+  providers?: EthereumProvider[];
+  request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+}
+
+/** Get the injected MetaMask provider. */
+function getEthereumProvider(): EthereumProvider | null {
   if (typeof window === 'undefined') return null;
   // Support multi-wallet setups (MetaMask)
-  const ethereum = (window as any).ethereum;
+  const ethereum = (window as Window & { ethereum?: EthereumProvider }).ethereum;
   if (!ethereum) return null;
   // If multiple wallets, prefer MetaMask
   if (ethereum.providers?.length) {
-    return ethereum.providers.find((p: any) => p.isMetaMask) || ethereum.providers[0];
+    return ethereum.providers.find((provider) => provider.isMetaMask) || ethereum.providers[0];
   }
   return ethereum;
 }
@@ -30,8 +34,8 @@ export async function connectWallet(): Promise<{ accounts: string[]; chainId: st
   }
 
   // Request accounts (triggers MetaMask popup)
-  const accounts: string[] = await ethereum.request({ method: 'eth_requestAccounts' });
-  const chainId: string = await ethereum.request({ method: 'eth_chainId' });
+  const accounts = await ethereum.request({ method: 'eth_requestAccounts' }) as string[];
+  const chainId = await ethereum.request({ method: 'eth_chainId' }) as string;
 
   return { accounts, chainId };
 }
@@ -51,7 +55,7 @@ export async function getAccounts(): Promise<string[]> {
   const ethereum = getEthereumProvider();
   if (!ethereum) return [];
   try {
-    const accounts: string[] = await ethereum.request({ method: 'eth_accounts' });
+    const accounts = await ethereum.request({ method: 'eth_accounts' }) as string[];
     return accounts || [];
   } catch {
     return [];
@@ -83,7 +87,7 @@ export function getProvider() {
 export async function getChainId(): Promise<string | null> {
   try {
     const provider = getProvider();
-    const chainId: string = await provider.request({ method: 'eth_chainId' });
+    const chainId = await provider.request({ method: 'eth_chainId' }) as string;
     return chainId;
   } catch {
     return null;
@@ -100,9 +104,9 @@ export async function switchToSepolia(): Promise<void> {
       method: 'wallet_switchEthereumChain',
       params: [{ chainId: '0xaa36a7' }], // Sepolia
     });
-  } catch (switchError: any) {
+  } catch (switchError: unknown) {
     // Error 4902 = chain not added to MetaMask
-    if (switchError.code === 4902) {
+    if (typeof switchError === 'object' && switchError !== null && 'code' in switchError && switchError.code === 4902) {
       await provider.request({
         method: 'wallet_addEthereumChain',
         params: [{

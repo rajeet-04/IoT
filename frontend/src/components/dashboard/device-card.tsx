@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Wifi, WifiOff, Pencil, Check, X } from 'lucide-react';
+import { Wifi, WifiOff, Pencil, Check, X, Cpu } from 'lucide-react';
 import RelayToggle from './relay-toggle';
 import type { Device } from '@/store/deviceStore';
 
@@ -44,7 +44,7 @@ export default function DeviceCard({ device, onToggle, onRename }: DeviceCardPro
     };
 
     return (
-        <div className="card p-4 sm:p-6 hover:shadow-lg transition-shadow">
+        <div className="app-surface group p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-slate-950/5">
             {/* Header */}
             <div className="flex items-start justify-between mb-4">
                 <div className="flex-1 min-w-0">
@@ -54,7 +54,7 @@ export default function DeviceCard({ device, onToggle, onRename }: DeviceCardPro
                                 type="text"
                                 value={editName}
                                 onChange={(e) => setEditName(e.target.value)}
-                                className="input py-1 px-2 text-lg font-semibold"
+                                className="input py-2 text-base font-semibold"
                                 autoFocus
                                 onKeyDown={(e) => {
                                     if (e.key === 'Enter') handleSave();
@@ -63,44 +63,48 @@ export default function DeviceCard({ device, onToggle, onRename }: DeviceCardPro
                             />
                             <button
                                 onClick={handleSave}
-                                className="btn btn-primary py-1 px-2"
+                                aria-label="Save device name"
+                                className="rounded-lg bg-indigo-600 p-2 text-white hover:bg-indigo-500"
                             >
                                 <Check className="w-4 h-4" />
                             </button>
                             <button
                                 onClick={handleCancel}
-                                className="btn btn-secondary py-1 px-2"
+                                aria-label="Cancel rename"
+                                className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"
                             >
                                 <X className="w-4 h-4" />
                             </button>
                         </div>
                     ) : (
                         <div className="flex items-center gap-2">
+                            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-50"><Cpu className="h-5 w-5 text-indigo-500" /></span>
                             <h3 className="text-lg sm:text-xl font-semibold truncate">
                                 {device.name}
                             </h3>
                             <button
                                 onClick={() => setIsEditing(true)}
-                                className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
+                                aria-label={`Rename ${device.name}`}
+                                className="rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
                             >
                                 <Pencil className="w-4 h-4" />
                             </button>
                         </div>
                     )}
-                    <p className="text-xs text-gray-500 font-mono truncate mt-1">
+                    <p className="mt-1 truncate text-xs font-mono text-slate-400">
                         {device.deviceId}
                     </p>
                 </div>
             </div>
 
             {/* Status badge */}
-            <div className="flex items-center gap-2 mb-4">
+            <div className="mb-7 mt-5 flex items-center gap-2">
                 <span
                     className={`
                         inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium
                         ${device.isConnected 
-                            ? 'bg-green-100 text-green-700' 
-                            : 'bg-gray-100 text-gray-500'
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : 'bg-slate-100 text-slate-500'
                         }
                     `}
                 >
@@ -125,8 +129,8 @@ export default function DeviceCard({ device, onToggle, onRename }: DeviceCardPro
             </div>
 
             {/* Footer - Last seen */}
-            <div className="text-xs text-gray-500 text-center">
-                Last seen: {formatRelativeTime(device.lastSeen)}
+            <div className="border-t border-slate-100 pt-4 text-center text-xs text-slate-500">
+                Last activity {formatRelativeTime(device.lastSeen)}
             </div>
         </div>
     );

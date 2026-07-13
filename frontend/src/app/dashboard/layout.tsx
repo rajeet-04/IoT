@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getCurrentUser, type User } from '@/lib/auth';
+import { restoreBrowserSession, type User } from '@/lib/auth';
 import Sidebar from '@/components/dashboard/sidebar';
 
 export default function DashboardLayout({
@@ -15,7 +15,7 @@ export default function DashboardLayout({
     const [checking, setChecking] = useState(true);
 
     useEffect(() => {
-        getCurrentUser().then((u) => {
+        restoreBrowserSession().then((u) => {
             if (!u) {
                 router.replace('/login');
             } else {
@@ -26,8 +26,8 @@ export default function DashboardLayout({
 
     if (checking) {
         return (
-            <div className="min-h-screen flex items-center justify-center bg-[#050505]">
-                <div className="w-8 h-8 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+            <div className="min-h-screen flex items-center justify-center bg-slate-950">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-300 border-t-transparent" />
             </div>
         );
     }
@@ -35,9 +35,9 @@ export default function DashboardLayout({
     if (!user) return null;
 
     return (
-        <div className="min-h-screen bg-gray-50 flex">
+        <div className="min-h-screen bg-slate-50 lg:flex">
             <Sidebar user={user} />
-            <main className="flex-1 md:ml-0">
+            <main className="min-w-0 flex-1 lg:ml-72">
                 {children}
             </main>
         </div>

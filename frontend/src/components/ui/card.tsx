@@ -1,18 +1,17 @@
 import * as React from "react";
 
-function cn(...inputs: any[]) {
-  const clsx = (args: any[]) => args.filter(Boolean).join(" ");
+function cn(...inputs: Array<string | undefined | false>) {
   return inputs.filter(Boolean).join(" ");
 }
 
-export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {}
+export type CardProps = React.HTMLAttributes<HTMLDivElement>;
 
 const Card = React.forwardRef<HTMLDivElement, CardProps>(
   ({ className, ...props }, ref) => (
     <div
       ref={ref}
       className={cn(
-        "rounded-lg border bg-white text-slate-950 shadow-sm",
+        "rounded-2xl border border-slate-200 bg-white text-slate-950 shadow-sm",
         className
       )}
       {...props}

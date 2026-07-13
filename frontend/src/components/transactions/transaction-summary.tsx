@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { apiGet } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Activity, Clock, Timer, Zap } from 'lucide-react';
@@ -44,11 +44,7 @@ export function TransactionSummary({ deviceId }: { deviceId: string }) {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [loading, setLoading] = useState(true);
   
-  useEffect(() => {
-    fetchSummary();
-  }, [deviceId]);
-  
-  async function fetchSummary() {
+  const fetchSummary = useCallback(async () => {
     try {
       const res = await apiGet(`/api/transactions/${deviceId}/summary`);
       const data = await res.json();
@@ -58,7 +54,11 @@ export function TransactionSummary({ deviceId }: { deviceId: string }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [deviceId]);
+
+  useEffect(() => {
+    fetchSummary();
+  }, [fetchSummary]);
   
   if (loading) {
     return (

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { apiGet } from '@/lib/api';
 import { ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -63,11 +63,7 @@ export function TransactionTable({ deviceId }: { deviceId: string }) {
   
   const limit = 20;
   
-  useEffect(() => {
-    fetchTransactions();
-  }, [deviceId, skip]);
-  
-  async function fetchTransactions() {
+  const fetchTransactions = useCallback(async () => {
     setLoading(true);
     setError(null);
     
@@ -78,12 +74,16 @@ export function TransactionTable({ deviceId }: { deviceId: string }) {
       const data = await res.json();
       setTransactions(data.transactions || []);
       setTotal(data.total || 0);
-    } catch (err: any) {
-      setError(err.message || 'Failed to load transactions');
+  } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load transactions');
     } finally {
       setLoading(false);
     }
-  }
+  }, [deviceId, skip]);
+
+  useEffect(() => {
+    fetchTransactions();
+  }, [fetchTransactions]);
   
   const hasMore = skip + limit < total;
   
@@ -121,27 +121,27 @@ export function TransactionTable({ deviceId }: { deviceId: string }) {
   
   return (
     <div className="space-y-4">
-      <div className="rounded-lg border overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-muted/50">
+      <div className="overflow-x-auto rounded-xl border border-slate-200">
+        <table className="min-w-[760px] w-full">
+          <thead className="bg-slate-50">
             <tr>
-              <th className="px-4 py-3 text-left text-sm font-medium">#</th>
-              <th className="px-4 py-3 text-left text-sm font-medium">Action</th>
-              <th className="px-4 py-3 text-left text-sm font-medium">Time</th>
-              <th className="px-4 py-3 text-left text-sm font-medium">Duration</th>
-              <th className="px-4 py-3 text-left text-sm font-medium">Wallet</th>
-              <th className="px-4 py-3 text-left text-sm font-medium">Status</th>
-              <th className="px-4 py-3 text-left text-sm font-medium">Tx Hash</th>
+              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-500">#</th>
+              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-500">Action</th>
+              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-500">Time</th>
+              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-500">Duration</th>
+              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-500">Wallet</th>
+              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-500">Status</th>
+              <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-slate-500">Tx Hash</th>
             </tr>
           </thead>
           <tbody className="divide-y">
             {transactions.map((tx, index) => (
-              <tr key={tx._id} className="hover:bg-muted/30">
-                <td className="px-4 py-3 text-sm text-muted-foreground">
+              <tr key={tx._id} className="transition-colors hover:bg-slate-50">
+                <td className="px-4 py-3 text-sm text-slate-400">
                   {skip + index + 1}
                 </td>
                 <td className="px-4 py-3">
-                  <span className={tx.action === 'on' ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>
+                  <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${tx.action === 'on' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
                     {tx.action.toUpperCase()}
                   </span>
                 </td>
@@ -177,8 +177,8 @@ export function TransactionTable({ deviceId }: { deviceId: string }) {
                       tx.status === 'pending' ? 'secondary' : 'destructive'
                     }
                     className={
-                      tx.status === 'confirmed' ? 'bg-green-100 text-green-800 hover:bg-green-100' :
-                      tx.status === 'pending' ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-100' : ''
+                      tx.status === 'confirmed' ? 'bg-emerald-50 text-emerald-700 hover:bg-emerald-50' :
+                      tx.status === 'pending' ? 'bg-amber-50 text-amber-700 hover:bg-amber-50' : ''
                     }
                   >
                     {tx.status}

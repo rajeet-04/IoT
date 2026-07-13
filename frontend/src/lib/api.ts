@@ -32,6 +32,36 @@ export const tokenStore = {
     },
 };
 
+let refreshPromise: Promise<boolean> | null = null;
+
+/** Rotate an expired browser access token once, even when several requests fail together. */
+export async function refreshSession(): Promise<boolean> {
+    if (typeof window === 'undefined') return false;
+    const refreshToken = tokenStore.getRefresh();
+    if (!refreshToken) return false;
+
+    if (!refreshPromise) {
+        refreshPromise = fetch(`${BACKEND_URL}/api/auth/refresh`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken }),
+        })
+            .then(async (response) => {
+                if (!response.ok) return false;
+                const data = await response.json();
+                if (!data.accessToken || !data.refreshToken) return false;
+                tokenStore.set(data.accessToken);
+                tokenStore.setRefresh(data.refreshToken);
+                return true;
+            })
+            .catch(() => false)
+            .finally(() => { refreshPromise = null; });
+    }
+
+    return refreshPromise;
+}
+
 /**
  * Fetch wrapper with error handling and Bearer token support
  */
@@ -48,10 +78,25 @@ export async function apiFetch(path: string, options: RequestInit = {}): Promise
         headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const response = await fetch(url, {
+    let response = await fetch(url, {
         ...options,
         headers,
+        credentials: 'include',
     });
+
+    // An access token is intentionally short lived. Restore the browser
+    // session with its refresh token and retry the original request once.
+    if (response.status === 401 && path !== '/api/auth/refresh' && await refreshSession()) {
+        const renewedToken = tokenStore.get();
+        response = await fetch(url, {
+            ...options,
+            headers: {
+                ...headers,
+                ...(renewedToken ? { Authorization: `Bearer ${renewedToken}` } : {}),
+            },
+            credentials: 'include',
+        });
+    }
 
     if (!response.ok) {
         const error = await response.json().catch(() => ({ error: response.statusText }));

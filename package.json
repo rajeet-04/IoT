@@ -8,10 +8,10 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "server": "nodemon src/index.js",
-    "client": "cd frontend && pnpm dev",
-    "dev": "concurrently \"npm run server\" \"npm run client\"",
-    "start": "node src/index.js",
+    "server": "bun --watch src/index.js",
+    "client": "cd frontend && bun run dev",
+    "dev": "concurrently \"bun run server\" \"bun run client\"",
+    "start": "bun src/index.js",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
   },
   "jest": {
@@ -24,19 +24,19 @@
   "dependencies": {
     "bcrypt": "^5.1.1",
     "cookie-parser": "^1.4.7",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.7",
-    "ethers": "^6.16.0",
-    "express": "^5.1.0",
-    "jsonwebtoken": "^9.0.2",
-    "mongodb": "^7.1.1",
-    "mongoose": "^8.13.1",
-    "ws": "^8.19.0",
-    "zod": "^3.24.2"
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "ethers": "^6.17.0",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "mongodb": "^7.5.0",
+    "mongoose": "^8.24.1",
+    "ws": "^8.21.0",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1",
+    "concurrently": "^9.2.4",
     "jest": "^29.7.0",
-    "nodemon": "^3.1.9"
+    "nodemon": "^3.1.14"
   }
 }

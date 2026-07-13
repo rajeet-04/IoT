@@ -1,6 +1,6 @@
 import * as React from "react";
 
-function cn(...inputs: any[]) {
+function cn(...inputs: Array<string | undefined | false>) {
   return inputs.filter(Boolean).join(" ");
 }
 

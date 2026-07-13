@@ -46,7 +46,7 @@ export function WalletConnect() {
       if (chainId !== '0xaa36a7') {
         try {
           await switchToSepolia();
-        } catch (switchErr: any) {
+        } catch {
           setError('Please switch to Sepolia testnet in MetaMask.');
           return;
         }
@@ -62,15 +62,16 @@ export function WalletConnect() {
       } catch (apiError) {
         console.error('[Wallet] Failed to save address to backend:', apiError);
       }
-    } catch (err: any) {
-      if (err.code === 4001) {
+    } catch (err: unknown) {
+      const walletError = err as { code?: number; message?: string };
+      if (walletError.code === 4001) {
         setError('Connection rejected. Please approve in MetaMask.');
-      } else if (err.code === -32002) {
+      } else if (walletError.code === -32002) {
         setError('MetaMask already has a pending request. Check the extension.');
-      } else if (err.message?.includes('not installed')) {
+      } else if (walletError.message?.includes('not installed')) {
         setError('MetaMask not found. Please install the MetaMask extension.');
       } else {
-        setError(err.message || 'Failed to connect wallet.');
+        setError(walletError.message || 'Failed to connect wallet.');
       }
     } finally {
       setLoading(false);
