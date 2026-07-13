@@ -8,10 +8,10 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "server": "nodemon src/index.js",
-    "client": "bun --cwd frontend run dev",
+    "server": "bun --watch src/index.js",
+    "client": "cd frontend && bun run dev",
     "dev": "concurrently \"bun run server\" \"bun run client\"",
-    "start": "node src/index.js",
+    "start": "bun src/index.js",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
   },
   "jest": {

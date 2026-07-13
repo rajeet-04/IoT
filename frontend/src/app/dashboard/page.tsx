@@ -5,16 +5,13 @@ import { Toaster, toast } from 'sonner';
 import { useDeviceStore } from '@/store/deviceStore';
 import ConnectionStatus from '@/components/dashboard/connection-status';
 import DeviceCard from '@/components/dashboard/device-card';
-import { getBackendUrl } from '@/lib/api';
 import { Cpu, Plus, Radio, Zap } from 'lucide-react';
 
 export default function DashboardPage() {
-    const { devices, wsStatus, init, sendCommand, renameDevice } = useDeviceStore();
+    const { devices, wsStatus, sendCommand, renameDevice } = useDeviceStore();
 
     useEffect(() => {
-        // Initialize WebSocket connection
-        const backendUrl = getBackendUrl();
-        init(backendUrl);
+        useDeviceStore.getState().init();
 
         // Cleanup on unmount
         return () => {
@@ -25,7 +22,7 @@ export default function DashboardPage() {
     // Handle toggle command
     const handleToggle = (deviceId: string, newState: boolean) => {
         const action = newState ? 'turn_on' : 'turn_off';
-        sendCommand(deviceId, action, {});
+        sendCommand(deviceId, action);
         toast.loading(`Turning ${newState ? 'ON' : 'OFF'}...`, { id: `toggle-${deviceId}` });
     };
 

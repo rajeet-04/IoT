@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { apiGet } from '@/lib/api';
 import { ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -63,11 +63,7 @@ export function TransactionTable({ deviceId }: { deviceId: string }) {
   
   const limit = 20;
   
-  useEffect(() => {
-    fetchTransactions();
-  }, [deviceId, skip]);
-  
-  async function fetchTransactions() {
+  const fetchTransactions = useCallback(async () => {
     setLoading(true);
     setError(null);
     
@@ -83,7 +79,11 @@ export function TransactionTable({ deviceId }: { deviceId: string }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [deviceId, skip]);
+
+  useEffect(() => {
+    fetchTransactions();
+  }, [fetchTransactions]);
   
   const hasMore = skip + limit < total;
   
