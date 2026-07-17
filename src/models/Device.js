@@ -49,6 +49,12 @@ const deviceSchema = new mongoose.Schema({
     max: 400,
     default: 10,
   },
+  wifiConnected: { type: Boolean, default: false },
+  wifiRssi: { type: Number, default: -100 },
+  sensorDegraded: { type: Boolean, default: false },
+  sensorInvalidReads: { type: Number, default: 0 },
+  freeHeap: { type: Number, default: null },
+  lastSensorEvent: { type: String, default: null },
   createdAt: {
     type: Date,
     default: Date.now,

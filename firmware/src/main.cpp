@@ -60,6 +60,25 @@ WebSocketClient* wsClient = nullptr;
 RelayController* relay = nullptr;
 UltrasonicSensor* ultrasonic = nullptr;
 
+unsigned int invalidSensorReads = 0;
+bool lastWifiConnected = false;
+constexpr unsigned int SENSOR_DEGRADED_AFTER_INVALID_READS = 3;
+bool sensorDegraded = false;
+
+void sendHealthReport() {
+    if (wsClient == nullptr || !wsClient->isConnected() || relay == nullptr) return;
+
+    JsonDocument report = relay->getStateJson();
+    report["type"] = "state_report";
+    report["wifiConnected"] = wifiManager != nullptr && wifiManager->isConnected();
+    report["wifiRssi"] = wifiManager != nullptr ? wifiManager->getSignalStrength() : -100;
+    report["sensorDegraded"] = sensorDegraded;
+    report["sensorInvalidReads"] = invalidSensorReads;
+    report["freeHeap"] = ESP.getFreeHeap();
+    if (ultrasonic != nullptr) ultrasonic->addReading(report);
+    wsClient->sendJson(report);
+}
+
 // ============================================================================
 // SETUP
 // ============================================================================
@@ -114,6 +133,8 @@ void setup() {
     } else {
         Serial.println("[Setup] WiFi connection failed - will retry automatically");
     }
+
+    lastWifiConnected = wifiManager->isConnected();
 
     // Enable auto-reconnect
     wifiManager->beginAutoReconnect();
@@ -234,11 +255,7 @@ void setup() {
     }
 
     // Send an initial sensor reading after the connection is established.
-    if (wsClient->isConnected()) {
-        JsonDocument stateReport = relay->getStateJson();
-        ultrasonic->addReading(stateReport);
-        wsClient->sendJson(stateReport);
-    }
+    sendHealthReport();
 
     Serial.println();
     Serial.println("[Setup] Initialization complete!");
@@ -262,19 +279,51 @@ void loop() {
         wsClient->tick();
     }
 
+    const bool wifiConnected = wifiManager != nullptr && wifiManager->isConnected();
+    if (wifiConnected != lastWifiConnected) {
+        lastWifiConnected = wifiConnected;
+        Serial.printf("[Health] WiFi %s\n", wifiConnected ? "restored" : "unavailable");
+        if (wifiConnected) sendHealthReport();
+    }
+
     // Ultrasonic motion has priority over the current relay state.
     static unsigned long lastSensorRead = 0;
-    if (ultrasonic != nullptr && relay != nullptr && wsClient != nullptr &&
+    if (ultrasonic != nullptr && relay != nullptr &&
         millis() - lastSensorRead >= 250) {
         lastSensorRead = millis();
         float distanceCm = -1.0f;
-        if (ultrasonic->detectMovement(distanceCm)) {
+        const bool movementDetected = ultrasonic->detectMovement(distanceCm);
+        const bool validReading = distanceCm >= 0.0f;
+        if (!validReading) {
+            invalidSensorReads++;
+            if (invalidSensorReads == SENSOR_DEGRADED_AFTER_INVALID_READS) {
+                sensorDegraded = true;
+                Serial.println("[Health] Ultrasonic sensor degraded; preserving relay state");
+                sendHealthReport();
+            }
+        } else {
+            invalidSensorReads = 0;
+            if (sensorDegraded) {
+                sensorDegraded = false;
+                Serial.println("[Health] Ultrasonic sensor recovered");
+                sendHealthReport();
+            }
+        }
+
+        if (validReading && movementDetected) {
             relay->setOn();
             JsonDocument report = relay->getStateJson();
             report["event"] = "movement_detected";
             report["distanceCm"] = distanceCm;
             report["distanceValid"] = true;
-            wsClient->sendJson(report);
+            report["wifiConnected"] = wifiConnected;
+            report["sensorDegraded"] = sensorDegraded;
+            report["freeHeap"] = ESP.getFreeHeap();
+            if (wsClient != nullptr && wsClient->isConnected()) {
+                wsClient->sendJson(report);
+            } else {
+                Serial.println("[Motion] Server unavailable; relay remains ON locally");
+            }
             Serial.printf("[Motion] Movement detected at %.1f cm; relay ON\n", distanceCm);
         }
     }

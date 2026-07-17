@@ -114,6 +114,12 @@ async function handleStateReport(deviceId, msg, registry) {
             update.distanceCm = msg.distanceCm;
             update.distanceValid = msg.distanceValid === true && msg.distanceCm >= 0;
         }
+        if (typeof msg.wifiConnected === 'boolean') update.wifiConnected = msg.wifiConnected;
+        if (typeof msg.wifiRssi === 'number') update.wifiRssi = msg.wifiRssi;
+        if (typeof msg.sensorDegraded === 'boolean') update.sensorDegraded = msg.sensorDegraded;
+        if (typeof msg.sensorInvalidReads === 'number') update.sensorInvalidReads = msg.sensorInvalidReads;
+        if (typeof msg.freeHeap === 'number') update.freeHeap = msg.freeHeap;
+        if (typeof msg.event === 'string') update.lastSensorEvent = msg.event;
         
         // Update lastSeen and relayState
         await Device.updateOne(

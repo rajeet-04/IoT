@@ -39,6 +39,12 @@ function publicDevice(device) {
     distanceValid: device.distanceValid,
     motionEnabled: device.motionEnabled,
     movementThresholdCm: device.movementThresholdCm,
+    wifiConnected: device.wifiConnected,
+    wifiRssi: device.wifiRssi,
+    sensorDegraded: device.sensorDegraded,
+    sensorInvalidReads: device.sensorInvalidReads,
+    freeHeap: device.freeHeap,
+    lastSensorEvent: device.lastSensorEvent,
     createdAt: device.createdAt,
   };
 }

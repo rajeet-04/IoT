@@ -5,6 +5,7 @@
 .env
 *.env.local
 *.env.*.local
+!firmware/.env.example
 
 # Logs
 npm-debug.log*
