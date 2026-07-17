@@ -31,6 +31,24 @@ const deviceSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  distanceCm: {
+    type: Number,
+    default: null,
+  },
+  distanceValid: {
+    type: Boolean,
+    default: false,
+  },
+  motionEnabled: {
+    type: Boolean,
+    default: true,
+  },
+  movementThresholdCm: {
+    type: Number,
+    min: 1,
+    max: 400,
+    default: 10,
+  },
   createdAt: {
     type: Date,
     default: Date.now,

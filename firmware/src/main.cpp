@@ -23,6 +23,12 @@
 #include <WiFiManager.h>
 #include <websocket_client.h>
 #include <relay_controller.h>
+#include <ultrasonic_sensor.h>
+
+// HC-SR04-style ultrasonic sensor pins.
+// ECHO must be level-shifted/divided to 3.3V before entering the ESP32.
+constexpr uint8_t ULTRASONIC_TRIG_PIN = 18;
+constexpr uint8_t ULTRASONIC_ECHO_PIN = 19;
 
 // ============================================================================
 // CREDENTIAL CONFIGURATION
@@ -52,6 +58,7 @@
 WiFiManager* wifiManager = nullptr;
 WebSocketClient* wsClient = nullptr;
 RelayController* relay = nullptr;
+UltrasonicSensor* ultrasonic = nullptr;
 
 // ============================================================================
 // SETUP
@@ -79,6 +86,12 @@ void setup() {
     relay->begin();
     relay->setDeviceToken(DEVICE_TOKEN);
     Serial.println("[Setup] Relay initialized in SAFE state (OFF)");
+    Serial.println();
+
+    // Initialize ultrasonic sensor
+    Serial.println("[Setup] Initializing ultrasonic sensor...");
+    ultrasonic = new UltrasonicSensor(ULTRASONIC_TRIG_PIN, ULTRASONIC_ECHO_PIN);
+    ultrasonic->begin();
     Serial.println();
 
     // =========================================================================
@@ -169,6 +182,7 @@ void setup() {
                 // Send state report after relay change
                 delay(50);  // Brief delay to ensure relay has switched
                 JsonDocument stateReport = relay->getStateJson();
+                ultrasonic->addReading(stateReport);
                 if (wsClient->sendJson(stateReport)) {
                     Serial.println("[WS] State report sent");
                 }
@@ -186,7 +200,15 @@ void setup() {
                 Serial.printf("[WS] Unknown action: %s\n", action);
             }
         } else if (strcmp(type, "config") == 0) {
-            Serial.println("[WS] Configuration message received (ignored)");
+            if (!msg["movementThresholdCm"].isNull()) {
+                ultrasonic->setMovementThresholdCm(msg["movementThresholdCm"] | 10.0f);
+            }
+            if (!msg["motionEnabled"].isNull()) {
+                const bool enabled = msg["motionEnabled"] | true;
+                ultrasonic->setMotionEnabled(enabled);
+            }
+            Serial.printf("[WS] Sensor settings applied: threshold=%.1f cm\n",
+                          ultrasonic->getMovementThresholdCm());
         } else if (strcmp(type, "welcome") == 0) {
             const char* deviceId = msg["deviceId"] | "unknown";
             Serial.printf("[WS] Server welcomed us as device: %s\n", deviceId);
@@ -211,6 +233,13 @@ void setup() {
         Serial.println("[Setup] WebSocket connection failed - will retry automatically");
     }
 
+    // Send an initial sensor reading after the connection is established.
+    if (wsClient->isConnected()) {
+        JsonDocument stateReport = relay->getStateJson();
+        ultrasonic->addReading(stateReport);
+        wsClient->sendJson(stateReport);
+    }
+
     Serial.println();
     Serial.println("[Setup] Initialization complete!");
     Serial.println("[Setup] Device is ready to receive commands.");
@@ -231,6 +260,23 @@ void loop() {
     // Handle WebSocket (heartbeat, auto-reconnect)
     if (wsClient != nullptr) {
         wsClient->tick();
+    }
+
+    // Ultrasonic motion has priority over the current relay state.
+    static unsigned long lastSensorRead = 0;
+    if (ultrasonic != nullptr && relay != nullptr && wsClient != nullptr &&
+        millis() - lastSensorRead >= 250) {
+        lastSensorRead = millis();
+        float distanceCm = -1.0f;
+        if (ultrasonic->detectMovement(distanceCm)) {
+            relay->setOn();
+            JsonDocument report = relay->getStateJson();
+            report["event"] = "movement_detected";
+            report["distanceCm"] = distanceCm;
+            report["distanceValid"] = true;
+            wsClient->sendJson(report);
+            Serial.printf("[Motion] Movement detected at %.1f cm; relay ON\n", distanceCm);
+        }
     }
 
     // Small delay to prevent watchdog issues

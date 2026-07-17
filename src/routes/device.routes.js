@@ -22,6 +22,27 @@ const updateDeviceSchema = z.object({
   name: z.string().min(1, 'Name cannot be empty').max(50, 'Name cannot exceed 50 characters'),
 });
 
+const updateSettingsSchema = z.object({
+  motionEnabled: z.boolean().optional(),
+  movementThresholdCm: z.number().min(1).max(400).optional(),
+}).refine((settings) => Object.keys(settings).length > 0, 'At least one setting is required');
+
+function publicDevice(device) {
+  return {
+    id: device._id,
+    deviceId: device.deviceId,
+    name: device.name,
+    status: device.status,
+    lastSeen: device.lastSeen,
+    relayState: device.relayState,
+    distanceCm: device.distanceCm,
+    distanceValid: device.distanceValid,
+    motionEnabled: device.motionEnabled,
+    movementThresholdCm: device.movementThresholdCm,
+    createdAt: device.createdAt,
+  };
+}
+
 // POST /api/devices — Register a new ESP32 device
 router.post('/', async (req, res, next) => {
   try {
@@ -59,15 +80,7 @@ router.get('/', async (req, res, next) => {
   try {
     const devices = await Device.find({ userId: req.userId }).sort({ createdAt: -1 });
     return res.status(200).json({
-      devices: devices.map((d) => ({
-        id: d._id,
-        deviceId: d.deviceId,
-        name: d.name,
-        status: d.status,
-        lastSeen: d.lastSeen,
-        relayState: d.relayState,
-        createdAt: d.createdAt,
-      })),
+      devices: devices.map(publicDevice),
     });
   } catch (err) {
     next(err);
@@ -87,15 +100,7 @@ router.get('/:id', async (req, res, next) => {
     }
 
     return res.status(200).json({
-      device: {
-        id: device._id,
-        deviceId: device.deviceId,
-        name: device.name,
-        status: device.status,
-        lastSeen: device.lastSeen,
-        relayState: device.relayState,
-        createdAt: device.createdAt,
-      },
+      device: publicDevice(device),
     });
   } catch (err) {
     next(err);
@@ -132,6 +137,36 @@ router.put('/:id', async (req, res, next) => {
         lastSeen: device.lastSeen,
       },
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/devices/:id/settings — Update ultrasonic motion settings
+router.put('/:id/settings', async (req, res, next) => {
+  try {
+    const result = updateSettingsSchema.safeParse(req.body);
+    if (!result.success) {
+      return res.status(400).json({ error: 'Validation failed', details: result.error.errors });
+    }
+
+    const device = await Device.findOne({ _id: req.params.id, userId: req.userId });
+    if (!device) return res.status(404).json({ error: 'Device not found' });
+
+    Object.assign(device, result.data, { updatedAt: new Date() });
+    await device.save();
+
+    const registry = getRegistry();
+    if (registry?.isConnected(device.deviceId)) {
+      registry.sendCommand(device.deviceId, {
+        type: 'config',
+        motionEnabled: device.motionEnabled,
+        movementThresholdCm: device.movementThresholdCm,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    return res.status(200).json({ success: true, device: publicDevice(device) });
   } catch (err) {
     next(err);
   }

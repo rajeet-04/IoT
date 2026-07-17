@@ -104,16 +104,21 @@ async function handleHeartbeat(deviceId, msg) {
 async function handleStateReport(deviceId, msg, registry) {
     try {
         const relayState = msg.relay !== undefined ? msg.relay : msg.relayState;
+        const update = {
+            lastSeen: new Date(),
+            status: 'online',
+            relayState: Boolean(relayState),
+        };
+
+        if (typeof msg.distanceCm === 'number') {
+            update.distanceCm = msg.distanceCm;
+            update.distanceValid = msg.distanceValid === true && msg.distanceCm >= 0;
+        }
         
         // Update lastSeen and relayState
         await Device.updateOne(
             { deviceId },
-            { 
-                $set: { 
-                    lastSeen: new Date(), 
-                    status: 'online',
-                    relayState: relayState 
-                } }
+            { $set: update }
         );
         
         console.log(`[WS State] Device ${deviceId} state: ${relayState ? 'ON' : 'OFF'}`);
