@@ -37,13 +37,30 @@ WebSocketClient::~WebSocketClient() {
 
 // ─── connect() ───────────────────────────────────────────────────────────────
 bool WebSocketClient::connect() {
-    Serial.printf("[WS] Connecting to wss://%s/ws\n", _backendUrl.c_str());
+    // Accept either a bare hostname or a URL in firmware/.env.
+    // WebSocketsClient::beginSSL expects only the hostname.
+    String host = _backendUrl;
+    host.trim();
+    host.replace("wss://", "");
+    host.replace("https://", "");
+    host.replace("ws://", "");
+    host.replace("http://", "");
+    const int slash = host.indexOf('/');
+    if (slash >= 0) host = host.substring(0, slash);
+    host.trim();
+
+    if (host.length() == 0) {
+        Serial.println("[WS] Invalid backend URL: empty hostname");
+        return false;
+    }
+
+    Serial.printf("[WS] Connecting to wss://%s/ws\n", host.c_str());
 
     // Build the Authorization header
     String authHeader = "Authorization: Bearer " + _deviceToken;
 
     // Configure WSS with insecure TLS (no CA verification needed for private endpoint)
-    _ws.beginSSL(_backendUrl.c_str(), 443, "/ws", "", "");
+    _ws.beginSSL(host.c_str(), 443, "/ws", "", "");
     _ws.setExtraHeaders(authHeader.c_str());
     _ws.onEvent(_wsEventHandler);
     _ws.setReconnectInterval(5000);      // retry every 5 s on disconnect
